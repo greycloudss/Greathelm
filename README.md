@@ -25,7 +25,7 @@ A modular, Windows-first Endpoint Detection & Response (EDR) service focused on 
 
 ---
 
-## 🚀 Getting Started
+## Getting Started
 
 ### Prerequisites
 
@@ -43,6 +43,6 @@ cd Greathelm
 
 ---
 
-## 📝 License
+## License
 
 MIT — see [LICENSE](LICENSE).
