@@ -1,10 +1,16 @@
 #pragma once
 #include "../../utils/strings.h"
 #include "../../escalate/defender.h"
+
 #include <windows.h>
 
 namespace MATCH {
-    class Runnables {
+    DWORD WINAPI rnThread(LPVOID* param) {
+        ((Runnable*)param)->run();
+        return 0;
+    }
+
+    class Runnable {
         private:
             inline static const char* vitalProcessesS[] = {
                 "smss.exe",
@@ -24,12 +30,20 @@ namespace MATCH {
                 "vmicheartbeat","vmickvpexchange","vmicrdv","vmicshutdown","vmictimesync","vmicvmsession","vmicvss"
             };
 
-            const ESCALATE::Defender* defender;
+            ESCALATE::Defender* defender;
+            volatile bool killswitch = false;
+
         public:
-            Runnables(const ESCALATE::Defender* defender);
+            volatile bool getKillswitch() {
+                return killswitch;
+            }
+
+            void kill() { killswitch = true; }
+
+            Runnable(ESCALATE::Defender* defender);
             void escalate();
             bool scanSuspicion(std::string susp);
 
-            
+            void run();
     };
 };

@@ -3,7 +3,11 @@
 #include <Windows.h>
 #include <vector>
 #include <unordered_map>
+#include <cstdint>
+
 #include "../../utils/strings.h"
+
+namespace ESCALATE { class Defender; }
 
 //will try to do ETW and event log
 
@@ -130,11 +134,17 @@ namespace MATCH {
             };
 
             std::vector<std::string> commands;
-            boolean killswitch = false;
+            ESCALATE::Defender* defender;
+            volatile bool killswitch = false;
+            
         public:
-            boolean getKillswitch() {
+            volatile bool getKillswitch() {
                 return killswitch;
             }
+
+            void kill() { killswitch = true; }
+
+            Powershell(ESCALATE::Defender* defender);
 
             std::string decode(std::string command);
             std::string matchCommands(std::string command);

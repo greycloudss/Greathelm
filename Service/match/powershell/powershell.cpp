@@ -1,4 +1,6 @@
 #include "powershell.h"
+#include "../../escalate/defender.h"
+#include "../../utils/pair.h"
 
 /***********************************************\
 *   Suspicious substring in powershell commands *
@@ -32,7 +34,7 @@ namespace MATCH {
 
             if (m.empty()) m = decode(command);
 
-            
+            if (!m.empty()) defender->escalate(UTIL::Pair<uint8_t, std::vector<std::string>>(0b010, std::vector<std::string>{m}));
         }
     }
 };
