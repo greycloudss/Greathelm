@@ -1,0 +1,1 @@
+C:\msys64\mingw64\bin\g++.exe -shared -O2 -s -DNDEBUG -DUNICODE -D_UNICODE -D_WIN32_WINNT=0x0A00 provider.cpp factory.cpp entrypoints.cpp -o ../Greathelm_Provider.dll -lole32 -loleaut32 -luuid -ladvapi32

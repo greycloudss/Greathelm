@@ -1,4 +1,6 @@
 #pragma once
+#include <windows.h>
+#include <unknwn.h>
 #include "provider.h"
 
 class Factory : public IClassFactory {
@@ -9,5 +11,4 @@ public:
     ULONG STDMETHODCALLTYPE Release() override;
     HRESULT STDMETHODCALLTYPE CreateInstance(IUnknown* outer, REFIID riid, void** ppv) override;
     HRESULT STDMETHODCALLTYPE LockServer(BOOL) override;
-    
 };
