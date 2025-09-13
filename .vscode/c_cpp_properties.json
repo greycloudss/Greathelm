@@ -1,0 +1,22 @@
+{
+  "version": 4,
+  "configurations": [
+    {
+      "name": "Win64-MinGW",
+      "compilerPath": "C:/msys64/mingw64/bin/g++.exe",
+      "intelliSenseMode": "windows-gcc-x64",
+      "includePath": [
+        "${workspaceFolder}/**",
+        "C:/msys64/mingw64/include",
+        "E:/Windows Kits/10/Include/10.0.26100.0/um",
+        "E:/Windows Kits/10/Include/10.0.26100.0/shared"
+      ],
+      "defines": [
+        "_WIN32_WINNT=0x0A00",
+        "UNICODE",
+        "_UNICODE"
+      ],
+      "cppStandard": "c++20"
+    }
+  ]
+}

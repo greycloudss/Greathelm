@@ -2,6 +2,8 @@
 #include "../match/powershell/powershell.h"
 #include "../match/runnable/runnable.h"
 
+#pragma comment(lib, "wscapi.lib")
+
 /*
     enum class Module : std::uint8_t {
         RUNNABLE   = 1u << 0,
@@ -40,8 +42,8 @@ void ESCALATE::Defender::run() {
 }
 
 ESCALATE::Defender::~Defender() {
-    powershell->kill();
-    runnable->kill();
-    powershell = __null;
-    runnable = __null;
+    if(powershell) powershell->kill();
+    if (runnable) runnable->kill();
+    powershell = nullptr;
+    runnable = nullptr;
 }

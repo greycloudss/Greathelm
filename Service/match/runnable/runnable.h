@@ -40,7 +40,7 @@ namespace MATCH {
 
             void kill() { killswitch = true; }
 
-            Runnable(ESCALATE::Defender* defender);
+            Runnable(ESCALATE::Defender* defender) : defender(defender) {run();};
             void escalate();
             bool scanSuspicion(std::string susp);
 

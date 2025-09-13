@@ -1,6 +1,6 @@
 #pragma once
 #include <iostream>
-#include <Windows.h>
+#include <windows.h>
 #include <vector>
 #include <unordered_map>
 #include <cstdint>
@@ -144,7 +144,7 @@ namespace MATCH {
 
             void kill() { killswitch = true; }
 
-            Powershell(ESCALATE::Defender* defender);
+            Powershell(ESCALATE::Defender* defender) : defender(defender) {run();};
 
             std::string decode(std::string command);
             std::string matchCommands(std::string command);
