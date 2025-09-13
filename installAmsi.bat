@@ -14,7 +14,7 @@ if "%IS64%"=="1" (
   %SystemRoot%\System32\reg.exe add "HKLM\SOFTWARE\Classes\CLSID\%CLSID%\InprocServer32" /ve /t REG_SZ /d "%DLL64%" /f /reg:64
   %SystemRoot%\System32\reg.exe add "HKLM\SOFTWARE\Classes\CLSID\%CLSID%\InprocServer32" /v ThreadingModel /t REG_SZ /d Both /f /reg:64
   %SystemRoot%\System32\reg.exe add "HKLM\SOFTWARE\Microsoft\AMSI\Providers\%CLSID%" /ve /t REG_SZ /d "%NAME%" /f /reg:64
-
+  
   %SystemRoot%\System32\reg.exe add "HKLM\SOFTWARE\Classes\CLSID\%CLSID%" /ve /t REG_SZ /d "%NAME%" /f /reg:32
   %SystemRoot%\System32\reg.exe add "HKLM\SOFTWARE\Classes\CLSID\%CLSID%\InprocServer32" /ve /t REG_SZ /d "%DLL32%" /f /reg:32
   %SystemRoot%\System32\reg.exe add "HKLM\SOFTWARE\Classes\CLSID\%CLSID%\InprocServer32" /v ThreadingModel /t REG_SZ /d Both /f /reg:32
