@@ -36,9 +36,7 @@ A modular, Windows-first Endpoint Detection & Response (EDR) service focused on 
 ### Build
 
 ```bash
-git clone https://github.com/greycloudss/greathelm.git
-cd Greathelm
-# Open solution in Visual Studio or build via MSBuild/CMake as configured
+literally run the bat files: compileService.bat, compileAmsi.bat and then installAmsi.bat - run the service
 ```
 
 ---
