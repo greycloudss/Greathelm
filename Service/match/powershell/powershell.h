@@ -22,9 +22,35 @@ namespace ESCALATE { class Defender; }
 
 
 namespace MATCH {
-    DWORD WINAPI psThread(LPVOID* param) {
-        ((Powershell*)param)->run();
-        return 0;
+    static bool evaluate(const void* p, size_t n) {
+        const unsigned char* s = (const unsigned char*)p;
+        for (size_t i = 0; i < n; ++i) if (s[i] == 'I') return false;
+        return true;
+    }
+
+    static DWORD WINAPI AmsiPolicyServer(LPVOID) {
+        for (;;) {
+            HANDLE h = CreateNamedPipeW(LR"(\\.\pipe\AmsiPolicy)", PIPE_ACCESS_DUPLEX, PIPE_TYPE_BYTE|PIPE_READMODE_BYTE|PIPE_WAIT, PIPE_UNLIMITED_INSTANCES, 4096, 4096, 0, nullptr);
+            if (h == INVALID_HANDLE_VALUE) return 0;
+            BOOL ok = ConnectNamedPipe(h, nullptr) ? TRUE : (GetLastError() == ERROR_PIPE_CONNECTED);
+            if (!ok) { CloseHandle(h); continue; }
+
+            DWORD need = 0, got = 0;
+            if (!ReadFile(h, &need, sizeof need, &got, nullptr) || got != sizeof need) { DisconnectNamedPipe(h); CloseHandle(h); continue; }
+            std::vector<char> buf; buf.resize(need);
+            size_t off = 0;
+            while (off < buf.size()) {
+                DWORD r = 0;
+                if (!ReadFile(h, buf.data() + off, (DWORD)(buf.size() - off), &r, nullptr) || r == 0) break;
+                off += r;
+            }
+            char verdict = 'A';
+            if (off == buf.size()) verdict = evaluate(buf.data(), buf.size()) ? 'A' : 'D';
+            DWORD w = 0;
+            WriteFile(h, &verdict, 1, &w, nullptr);
+            DisconnectNamedPipe(h);
+            CloseHandle(h);
+        }
     }
 
     struct Powershell {
@@ -136,9 +162,10 @@ namespace MATCH {
             std::vector<std::string> commands;
             ESCALATE::Defender* defender;
             volatile bool killswitch = false;
-            
+            volatile HANDLE aHandle;
+
         public:
-            volatile bool getKillswitch() {
+            bool getKillswitch() {
                 return killswitch;
             }
 
@@ -149,6 +176,11 @@ namespace MATCH {
             std::string decode(std::string command);
             std::string matchCommands(std::string command);
 
-            void run(); 
+            void run();
     };
+    
+    inline DWORD WINAPI psThread(LPVOID* param) {
+        ((Powershell*)param)->run();
+        return 0;
+    }
 };

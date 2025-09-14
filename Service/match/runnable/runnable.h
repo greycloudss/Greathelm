@@ -5,11 +5,6 @@
 #include <windows.h>
 
 namespace MATCH {
-    DWORD WINAPI rnThread(LPVOID* param) {
-        ((Runnable*)param)->run();
-        return 0;
-    }
-
     class Runnable {
         private:
             inline static const char* vitalProcessesS[] = {
@@ -46,4 +41,9 @@ namespace MATCH {
 
             void run();
     };
+    
+    inline DWORD WINAPI rnThread(LPVOID* param) {
+        ((Runnable*)param)->run();
+        return 0;
+    }
 };

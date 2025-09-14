@@ -4,17 +4,19 @@
 #include "../utils/pair.h"
 #include <array>
 #include <cstdint>
+#include <WtsApi32.h>
+#include <memory>
+#include <string>
+#include <filesystem>
+#include <sstream>
+#include <iomanip>
+#include <fstream>
 
 
-namespace MATCH { class Powershell; class Runnables; }
+namespace MATCH { class Powershell;/* class Runnables; */}
 namespace KERNEL { class Kernel; }
 
 namespace ESCALATE {
-    DWORD WINAPI defThread(LPVOID* param) {
-        ((Defender*)param)->run();
-        return 0;
-    }
-
     class Defender {
         private:
             uint8_t flags;
@@ -30,7 +32,7 @@ namespace ESCALATE {
             inline bool escalateFW(std::vector<std::string> connections); // Connections
 
             void notifyUser(std::string threat);
-            MATCH::Runnable* runnable;
+            //MATCH::Runnable* runnable;
             MATCH::Powershell* powershell;
             //kernel here too as ptr
         public:
@@ -42,4 +44,9 @@ namespace ESCALATE {
 
             ~Defender();
     };
+    
+    inline DWORD WINAPI defThread(LPVOID* param) {
+        ((Defender*)param)->run();
+        return 0;
+    }
 };

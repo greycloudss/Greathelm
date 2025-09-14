@@ -2,28 +2,50 @@
   "version": "2.0.0",
   "tasks": [
     {
-      "label": "build-mingw64",
+      "label": "build-service-x64",
       "type": "shell",
       "command": "C:/msys64/mingw64/bin/g++",
       "args": [
-        "defender.cpp",
         "-std=c++20",
         "-O2",
-        "-D_WIN32_WINNT=0x0A00",
+        "-DNDEBUG",
         "-DUNICODE",
         "-D_UNICODE",
-        "-I", "E:/Windows Kits/10/Include/10.0.26100.0/um",
-        "-I", "E:/Windows Kits/10/Include/10.0.26100.0/shared",
-        "-o", "defender.exe",
-        "E:/Windows Kits/10/Lib/10.0.26100.0/um/x64/amsi.lib",
-        "-lws2_32",
+        "-D_WIN32_WINNT=0x0A00",
+        "main.cpp",
+        "escalate/defender.cpp",
+        "match/powershell/powershell.cpp",
+        "match/runnable/runnable.cpp",
+        "-o",
+        "../Service.exe",
         "-lole32",
         "-loleaut32",
         "-luuid",
         "-ladvapi32",
+        "-lws2_32",
         "-lwscapi"
       ],
-      "problemMatcher": ["$gcc"]
+      "options": {
+        "cwd": "${workspaceFolder}/Service"
+      },
+      "problemMatcher": [
+        "$gcc"
+      ],
+      "group": {
+        "kind": "build",
+        "isDefault": true
+      }
+    },
+    {
+      "label": "build-amsi-provider-x64",
+      "type": "shell",
+      "command": "${workspaceFolder}", //literally run the bat files compileService.bat, compileAmsi.bat and then installAmsi.bat - run the service
+      "options": {
+        "cwd": "${workspaceFolder}/Service"
+      },
+      "problemMatcher": [
+        "$gcc"
+      ]
     }
   ]
 }

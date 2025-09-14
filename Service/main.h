@@ -1,6 +1,8 @@
 #pragma once
 #include <windows.h>
 #include <strsafe.h>
+#include "match/powershell/powershell.h"
+#include "escalate/defender.h"
 
 #define SVCNAME TEXT("greathelm")
 #pragma comment(lib, "Advapi32.lib")

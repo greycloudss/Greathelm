@@ -3,17 +3,23 @@
 #include <algorithm>
 #include <vector>
 namespace UTIL {
-    std::string stripSpaces(std::string s) {
+    inline std::string stripSpaces(std::string s) {
         s.erase(std::remove_if(s.begin(), s.end(), [](unsigned char c){ return c==' ' || c=='\t'; }),  s.end());
         return s;
     }
     
-    std::string to_lower(std::string s) {
+    inline std::string slashFlag(std::string s) {
+        std::replace(s.begin(), s.end(), '-', '/');
+        // have heard some evasion techniques are literally just replacing a '-' with a '/' for flags, sounds stupid but its something :)
+        return s;
+    }
+
+    inline std::string to_lower(std::string s) {
         std::transform(s.begin(), s.end(), s.begin(), [](unsigned char c){ return (char)std::tolower(c); });
         return s;
     }
     
-    std::string b64decode(const std::string& in) {
+    inline std::string b64decode(const std::string& in) {
         static const int T[256] = {
             -1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,
             -1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,62,-1,-1,-1,63,52,53,54,55,56,57,58,59,60,61,-1,-1,-1,-1,-1,-1,
@@ -27,8 +33,8 @@ namespace UTIL {
     
         std::string out;
         out.reserve(in.size()*3/4);
-        int val = 0, valb = -8;
-    
+        int val = 0;
+        int valb = -8;
         for (unsigned char uc : in) {
             if (uc == '=') break;
             if (std::isspace(uc)) continue;

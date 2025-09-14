@@ -4,14 +4,27 @@
 #include <ole2.h>
 
 HMODULE g_hMod = nullptr;
-const wchar_t* kProviderName = L"My AMSI Provider";
+const wchar_t* kProviderName = L"Greathelm";
 const CLSID CLSID_MyProvider = {0x5f3e9c28,0x3e4a,0x4a8a,{0x9b,0x0c,0x9c,0x42,0x3e,0x3a,0xa7,0x11}};
 extern "C" const IID IID_IAntimalwareProvider = {0xb2cabfe3,0xfe04,0x42b1,{0xa5,0xdf,0x08,0xd4,0x83,0xd4,0xd1,0x25}};
 
 static bool policy_allow(const void* data, size_t len) {
-    const unsigned char* p = (const unsigned char*)data;
-    for (size_t i = 0; i < len; ++i) if (p[i] == 'I') return false;
-    return true;
+    if (!WaitNamedPipeW(LR"(\\.\pipe\AmsiPolicy)", 200)) return true;
+    HANDLE h = CreateFileW(LR"(\\.\pipe\AmsiPolicy)", GENERIC_READ|GENERIC_WRITE, 0, nullptr, OPEN_EXISTING, 0, nullptr);
+    if (h == INVALID_HANDLE_VALUE) return true;
+    DWORD w = 0, r = 0;
+    DWORD need = (DWORD)len;
+    if (!WriteFile(h, &need, sizeof need, &w, nullptr)) { CloseHandle(h); return true; }
+    size_t off = 0;
+    while (off < len) {
+        DWORD chunk = (DWORD) std::min(len - off, (size_t)65536);
+        if (!WriteFile(h, (const char*)data + off, chunk, &w, nullptr) || w == 0) { CloseHandle(h); return true; }
+        off += w;
+    }
+    char verdict = 'A';
+    ReadFile(h, &verdict, 1, &r, nullptr);
+    CloseHandle(h);
+    return verdict != 'D';
 }
 
 HRESULT Provider::QueryInterface(REFIID riid, void** ppv) {
@@ -52,7 +65,11 @@ HRESULT Provider::Scan(IAmsiStream* stream, AMSI_RESULT* result) {
     stream->GetAttribute(AMSI_ATTRIBUTE_CONTENT_ADDRESS, sizeof(addr), (PUCHAR)&addr, &ret);
 
     if (addr && sz) {
-        if (!policy_allow(addr, (size_t)sz)) { *result = AMSI_RESULT_DETECTED; return S_OK; }
+        if (!policy_allow(addr, (size_t)sz)) {
+            *result = AMSI_RESULT_DETECTED;
+            return S_OK;
+        }
+
     } else {
         const ULONG chunk = 1 << 16;
         std::string buf; buf.resize(chunk);
@@ -67,7 +84,6 @@ HRESULT Provider::Scan(IAmsiStream* stream, AMSI_RESULT* result) {
                 *result = AMSI_RESULT_DETECTED;
                 return S_OK;
             }
-
             pos += read;
         }
     }
