@@ -93,7 +93,7 @@ namespace MATCH {
                     if (norm.find(kv.first) != std::string::npos) { reason = kv.second; break; }
                 }
                 if (reason.empty()) {
-                    std::string dec = self->decode(cmd); // checks -enc/base64 then reuses matchCommands
+                    std::string dec = self->decode(cmd);
                     if (!dec.empty()) reason = dec;
                 }
 
@@ -103,8 +103,12 @@ namespace MATCH {
                 }
             }
 
-            DWORD w=0; WriteFile(h, &verdict, 1, &w, nullptr);
-            DisconnectNamedPipe(h); CloseHandle(h);
+        DWORD w = 0;
+        WriteFile(h, &verdict, 1, &w, nullptr);
+        FlushFileBuffers(h);
+        Sleep(10);
+        DisconnectNamedPipe(h);
+        CloseHandle(h);
         }
     }
 

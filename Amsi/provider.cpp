@@ -53,28 +53,37 @@ bool gh_logw(const std::wstring& msg) {
     return false;
 }
 
-
 static bool policy_allow(const uint8_t* data, size_t len) {
-    constexpr DWORD kTimeoutMs = 500;
+    constexpr DWORD kTimeoutMs = 800;
     constexpr DWORD kMaxMsg    = 262144;
+
+    static std::atomic<bool> s_logWaitFail{false};
+    static std::atomic<bool> s_logOpenFail{false};
+    static std::atomic<bool> s_logWriteFail{false};
+    static std::atomic<bool> s_logReadFail{false};
 
     if (!data || len == 0) return true;
 
-    const DWORD toSend = static_cast<DWORD>(std::min<size_t>(len, kMaxMsg));
+    DWORD toSend = (DWORD) (len > kMaxMsg ? kMaxMsg : len);
 
     if (!WaitNamedPipeW(LR"(\\.\pipe\AmsiPolicy)", kTimeoutMs)) {
+        if (!s_logWaitFail.exchange(true)) {
+            wchar_t buf[64]; swprintf(buf, 64, L"PIPE_FAIL: wait (%lu)", GetLastError());
+            gh_logw(buf);
+        }
         return true;
     }
 
-    HANDLE h = CreateFileW(LR"(\\.\pipe\AmsiPolicy)",
-                           GENERIC_READ | GENERIC_WRITE,
-                           0, nullptr, OPEN_EXISTING,
-                           FILE_FLAG_OVERLAPPED, nullptr);
+    HANDLE h = CreateFileW(LR"(\\.\pipe\AmsiPolicy)", GENERIC_READ|GENERIC_WRITE, 0, nullptr,
+                           OPEN_EXISTING, FILE_FLAG_OVERLAPPED, nullptr);
     if (h == INVALID_HANDLE_VALUE) {
+        if (!s_logOpenFail.exchange(true)) {
+            wchar_t buf[64]; swprintf(buf, 64, L"PIPE_FAIL: open (%lu)", GetLastError());
+            gh_logw(buf);
+        }
         return true;
     }
 
-    bool allow = true;
     OVERLAPPED ovw{}; OVERLAPPED ovr{};
     ovw.hEvent = CreateEventW(nullptr, TRUE, FALSE, nullptr);
     ovr.hEvent = CreateEventW(nullptr, TRUE, FALSE, nullptr);
@@ -85,7 +94,7 @@ static bool policy_allow(const uint8_t* data, size_t len) {
         return true;
     }
 
-    auto cleanup = [&]() {
+    auto cleanup = [&](){
         CloseHandle(ovw.hEvent);
         CloseHandle(ovr.hEvent);
         CloseHandle(h);
@@ -93,12 +102,11 @@ static bool policy_allow(const uint8_t* data, size_t len) {
 
     DWORD written = 0;
     if (!WriteFile(h, &toSend, sizeof(toSend), nullptr, &ovw)) {
-        if (GetLastError() != ERROR_IO_PENDING ||
-            WaitForSingleObject(ovw.hEvent, kTimeoutMs) != WAIT_OBJECT_0 ||
-            !GetOverlappedResult(h, &ovw, &written, FALSE) ||
-            written != sizeof(toSend)) {
-            cleanup();
-            return true;
+        if (GetLastError()!=ERROR_IO_PENDING ||
+            WaitForSingleObject(ovw.hEvent, kTimeoutMs)!=WAIT_OBJECT_0 ||
+            !GetOverlappedResult(h, &ovw, &written, FALSE) || written!=sizeof(toSend)) {
+            if (!s_logWriteFail.exchange(true)) gh_logw(L"PIPE_FAIL: write(size)");
+            cleanup(); return true;
         }
     }
 
@@ -108,15 +116,15 @@ static bool policy_allow(const uint8_t* data, size_t len) {
         ResetEvent(ovw.hEvent);
         const DWORD chunk = remaining > 65536 ? 65536 : remaining;
         if (!WriteFile(h, p, chunk, nullptr, &ovw)) {
-            if (GetLastError() != ERROR_IO_PENDING ||
-                WaitForSingleObject(ovw.hEvent, kTimeoutMs) != WAIT_OBJECT_0) {
-                cleanup();
-                return true;
+            if (GetLastError()!=ERROR_IO_PENDING ||
+                WaitForSingleObject(ovw.hEvent, kTimeoutMs)!=WAIT_OBJECT_0) {
+                if (!s_logWriteFail.exchange(true)) gh_logw(L"PIPE_FAIL: write(data)");
+                cleanup(); return true;
             }
             DWORD got = 0;
-            if (!GetOverlappedResult(h, &ovw, &got, FALSE) || got == 0) {
-                cleanup();
-                return true;
+            if (!GetOverlappedResult(h, &ovw, &got, FALSE) || got==0) {
+                if (!s_logWriteFail.exchange(true)) gh_logw(L"PIPE_FAIL: write(zero)");
+                cleanup(); return true;
             }
             written = got;
         } else {
@@ -129,21 +137,20 @@ static bool policy_allow(const uint8_t* data, size_t len) {
     BYTE verdict = 'A';
     ResetEvent(ovr.hEvent);
     if (!ReadFile(h, &verdict, 1, nullptr, &ovr)) {
-        if (GetLastError() != ERROR_IO_PENDING ||
-            WaitForSingleObject(ovr.hEvent, kTimeoutMs) != WAIT_OBJECT_0) {
-            cleanup();
-            return true;
+        if (GetLastError()!=ERROR_IO_PENDING ||
+            WaitForSingleObject(ovr.hEvent, kTimeoutMs)!=WAIT_OBJECT_0) {
+            if (!s_logReadFail.exchange(true)) gh_logw(L"PIPE_FAIL: read(verdict)");
+            cleanup(); return true;
         }
         DWORD got = 0;
-        if (!GetOverlappedResult(h, &ovr, &got, FALSE) || got != 1) {
-            cleanup();
-            return true;
+        if (!GetOverlappedResult(h, &ovr, &got, FALSE) || got!=1) {
+            if (!s_logReadFail.exchange(true)) gh_logw(L"PIPE_FAIL: read(size)");
+            cleanup(); return true;
         }
     }
-    allow = (verdict != 'D');
 
     cleanup();
-    return allow;
+    return verdict != 'D';
 }
 
 HRESULT Provider::QueryInterface(REFIID riid, void** ppv) {
@@ -179,7 +186,8 @@ HRESULT Provider::DisplayName(LPWSTR* name){
 void Provider::CloseSession(ULONGLONG){}
 
 HRESULT Provider::Scan(IAmsiStream* stream, AMSI_RESULT* result) {
-    gh_logw(L"1");
+    static std::atomic<bool> s_loggedScan{false};
+    if (!s_loggedScan.exchange(true)) gh_logw(L"SCAN begin (provider)");
     if (!stream || !result) return E_INVALIDARG;
     *result = AMSI_RESULT_NOT_DETECTED;
     gh_logw(L"2");
