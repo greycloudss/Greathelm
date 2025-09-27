@@ -1,35 +1,40 @@
 #include "factory.h"
+#include "provider.h"
+#include <new>
 
-HRESULT Factory::QueryInterface(REFIID riid, void** ppv) {
+HRESULT ClassFactory::QueryInterface(REFIID riid, void** ppv) {
+    if (ppv) *ppv = nullptr;
     if (!ppv) return E_POINTER;
-    if (IsEqualIID(riid, IID_IUnknown) || IsEqualIID(riid, IID_IClassFactory)) { *ppv = static_cast<IClassFactory*>(this); AddRef(); return S_OK; }
-    *ppv = nullptr; return E_NOINTERFACE;
+    if (IsEqualIID(riid, IID_IUnknown) || IsEqualIID(riid, IID_IClassFactory)) {
+        *ppv = static_cast<IClassFactory*>(this);
+        AddRef();
+        return S_OK;
+    }
+    return E_NOINTERFACE;
 }
 
-ULONG Factory::AddRef() {
+ULONG ClassFactory::AddRef() {
     long n = refCount.fetch_add(1, std::memory_order_acq_rel) + 1;
     return (ULONG)n;
 }
 
-ULONG Factory::Release() {
+ULONG ClassFactory::Release() {
     long n = refCount.fetch_sub(1, std::memory_order_acq_rel) - 1;
     if (!n) delete this;
     return (ULONG)n;
 }
 
-HRESULT Factory::CreateInstance(IUnknown* outer, REFIID riid, void** ppv) {
+HRESULT ClassFactory::CreateInstance(IUnknown* outer, REFIID riid, void** ppv) {
+    if (ppv) *ppv = nullptr;
+    if (!ppv) return E_POINTER;
     if (outer) return CLASS_E_NOAGGREGATION;
-    
     Provider* p = new(std::nothrow) Provider();
-
     if (!p) return E_OUTOFMEMORY;
-
     HRESULT hr = p->QueryInterface(riid, ppv);
-    p->Release();
-
+    if (FAILED(hr)) delete p;
     return hr;
 }
 
-HRESULT Factory::LockServer(BOOL) {
+HRESULT ClassFactory::LockServer(BOOL) {
     return S_OK;
 }

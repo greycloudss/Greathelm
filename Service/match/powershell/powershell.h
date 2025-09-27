@@ -4,54 +4,13 @@
 #include <vector>
 #include <unordered_map>
 #include <cstdint>
-
 #include "../../utils/strings.h"
 
 namespace ESCALATE { class Defender; }
 
-//will try to do ETW and event log
-
-#define WIN32_LEAN_AND_MEAN
-#define _WIN32_WINNT 0x0A00
-#include <winevt.h> 
-
-#include <evntrace.h>
-#include <evntcons.h>
-#include <tdh.h>
-#pragma comment(lib, "tdh.lib");
-
-
 namespace MATCH {
-    static bool evaluate(const void* p, size_t n) {
-        const unsigned char* s = (const unsigned char*)p;
-        for (size_t i = 0; i < n; ++i) if (s[i] == 'I') return false;
-        return true;
-    }
-
-    static DWORD WINAPI AmsiPolicyServer(LPVOID) {
-        for (;;) {
-            HANDLE h = CreateNamedPipeW(LR"(\\.\pipe\AmsiPolicy)", PIPE_ACCESS_DUPLEX, PIPE_TYPE_BYTE|PIPE_READMODE_BYTE|PIPE_WAIT, PIPE_UNLIMITED_INSTANCES, 4096, 4096, 0, nullptr);
-            if (h == INVALID_HANDLE_VALUE) return 0;
-            BOOL ok = ConnectNamedPipe(h, nullptr) ? TRUE : (GetLastError() == ERROR_PIPE_CONNECTED);
-            if (!ok) { CloseHandle(h); continue; }
-
-            DWORD need = 0, got = 0;
-            if (!ReadFile(h, &need, sizeof need, &got, nullptr) || got != sizeof need) { DisconnectNamedPipe(h); CloseHandle(h); continue; }
-            std::vector<char> buf; buf.resize(need);
-            size_t off = 0;
-            while (off < buf.size()) {
-                DWORD r = 0;
-                if (!ReadFile(h, buf.data() + off, (DWORD)(buf.size() - off), &r, nullptr) || r == 0) break;
-                off += r;
-            }
-            char verdict = 'A';
-            if (off == buf.size()) verdict = evaluate(buf.data(), buf.size()) ? 'A' : 'D';
-            DWORD w = 0;
-            WriteFile(h, &verdict, 1, &w, nullptr);
-            DisconnectNamedPipe(h);
-            CloseHandle(h);
-        }
-    }
+    DWORD WINAPI AmsiPolicyServer(LPVOID pv);
+    bool evaluate(const void* p, size_t n);
 
     struct Powershell {
         private:
@@ -165,22 +124,15 @@ namespace MATCH {
             volatile HANDLE aHandle;
 
         public:
-            bool getKillswitch() {
-                return killswitch;
-            }
-
+            bool getKillswitch() { return killswitch; }
             void kill() { killswitch = true; }
-
             Powershell(ESCALATE::Defender* defender) : defender(defender) {run();};
-
             std::string decode(std::string command);
             std::string matchCommands(std::string command);
-
+            ESCALATE::Defender* getDefender() { return defender; }
             void run();
     };
-    
-    inline DWORD WINAPI psThread(LPVOID* param) {
-        ((Powershell*)param)->run();
-        return 0;
-    }
+
+    DWORD WINAPI AmsiPolicyServer(LPVOID);
+    inline DWORD WINAPI psThread(LPVOID* param) { ((Powershell*)param)->run(); return 0; }
 };

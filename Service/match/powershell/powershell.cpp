@@ -1,55 +1,122 @@
 #include "powershell.h"
 #include "../../escalate/defender.h"
 
-/***********************************************\
-*   Suspicious substring in powershell commands *
-*   remove all spaces in powershell then ctrl f *
-*     that way can just search for substring    *
-\***********************************************/
-
 namespace MATCH {
+    static std::string take_b64_arg(const std::string& s) {
+        std::string low = UTIL::to_lower(s);
+        size_t p = low.find("-enc");
+        if (p == std::string::npos) p = low.find("-encodedcommand");
+        if (p == std::string::npos) return {};
+        size_t i = p;
+        while (i < s.size() && !isspace((unsigned char)s[i])) ++i;
+        while (i < s.size() &&  isspace((unsigned char)s[i])) ++i;
+        size_t j = i;
+        while (j < s.size() && !isspace((unsigned char)s[j])) ++j;
+        if (j <= i) return {};
+        return s.substr(i, j - i);
+    }
+
+    bool evaluate(const void* p, size_t n) {
+        const unsigned char* s = (const unsigned char*)p;
+        for (size_t i = 0; i < n; ++i) if (s[i] == 'I') return false;
+        return true;
+    }
 
     std::string Powershell::decode(std::string command) {
+        std::string arg = take_b64_arg(command);
+        if (!arg.empty()) {
+            std::string d = UTIL::b64decode(arg);
+            if (!d.empty()) return matchCommands(d);
+        }
         return matchCommands(UTIL::b64decode(command));
     }
-    
+
     std::string Powershell::matchCommands(std::string command) {
         std::string key = UTIL::stripSpaces(command);
         std::unordered_map<std::string, std::string>::const_iterator it = psStrings.find(key);
-        
-        if (it != psStrings.end())
-            return it->second;
-        
+        if (it != psStrings.end()) return it->second;
         key = UTIL::slashFlag(key);
         it = psStrings.find(key);
+        if (it != psStrings.end()) return it->second;
+        for (const auto& kv : psStrings) if (UTIL::to_lower(key).find(kv.first) != std::string::npos) return kv.second;
+        return "";
+    }
 
-        return it != psStrings.end() ? it->second : "";
+    DWORD WINAPI AmsiPolicyServer(LPVOID pv) {
+        MATCH::Powershell* self = (MATCH::Powershell*)pv;
+
+        SECURITY_DESCRIPTOR sd;
+        InitializeSecurityDescriptor(&sd, SECURITY_DESCRIPTOR_REVISION);
+        SetSecurityDescriptorDacl(&sd, TRUE, nullptr, FALSE);
+        SECURITY_ATTRIBUTES sa;
+        sa.nLength = sizeof(sa);
+        sa.lpSecurityDescriptor = &sd;
+        sa.bInheritHandle = FALSE;
+
+        for (;;) {
+            HANDLE h = CreateNamedPipeW(LR"(\\.\pipe\AmsiPolicy)",
+                                        PIPE_ACCESS_DUPLEX,
+                                        PIPE_TYPE_BYTE | PIPE_READMODE_BYTE | PIPE_WAIT,
+                                        PIPE_UNLIMITED_INSTANCES,
+                                        4096, 4096, 0, &sa);
+            if (h == INVALID_HANDLE_VALUE) return 0;
+
+            BOOL ok = ConnectNamedPipe(h, nullptr) ? TRUE : (GetLastError() == ERROR_PIPE_CONNECTED);
+            if (!ok) { CloseHandle(h); continue; }
+
+            DWORD need = 0, got = 0;
+            if (!ReadFile(h, &need, sizeof need, &got, nullptr) || got != sizeof need) { DisconnectNamedPipe(h); CloseHandle(h); continue; }
+
+            std::vector<char> buf; buf.resize(need);
+            size_t off = 0;
+            while (off < buf.size()) {
+                DWORD r = 0;
+                if (!ReadFile(h, buf.data() + off, (DWORD)(buf.size() - off), &r, nullptr) || r == 0) break;
+                off += r;
+            }
+
+            char verdict = 'A';
+            if (off == buf.size()) verdict = evaluate(buf.data(), buf.size()) ? 'A' : 'D';
+
+            if (off == buf.size() && self) {
+                std::string cmd;
+                if (off >= 2 && buf[1] == 0x00) {
+                    const wchar_t* ws = (const wchar_t*)buf.data();
+                    int wlen = (int)(off / 2);
+                    int need8 = WideCharToMultiByte(CP_UTF8, 0, ws, wlen, nullptr, 0, nullptr, nullptr);
+                    if (need8 > 0) {
+                        cmd.resize(need8);
+                        WideCharToMultiByte(CP_UTF8, 0, ws, wlen, &cmd[0], need8, nullptr, nullptr);
+                    }
+                } else {
+                    cmd.assign(buf.begin(), buf.end());
+                }
+
+                std::string m = self->matchCommands(cmd);
+                if (m.empty()) m = self->decode(cmd);
+                if (m.empty()) m = cmd;
+                self->getDefender()->escalate(UTIL::Pair<uint8_t, std::vector<std::string>>(0b010, std::vector<std::string>{m}));
+            }
+
+            DWORD w = 0;
+            WriteFile(h, &verdict, 1, &w, nullptr);
+            DisconnectNamedPipe(h);
+            CloseHandle(h);
+        }
     }
 
 
     void Powershell::run() {
-        this->aHandle = CreateThread(nullptr, 0, AmsiPolicyServer, nullptr, 0, nullptr);
-
-        if (!aHandle) {
-            delete defender;
-            kill();
-            return;
-        }
-
+        this->aHandle = CreateThread(nullptr, 0, AmsiPolicyServer, this, 0, nullptr);
+        if (!aHandle) { delete defender; kill(); return; }
         while (!killswitch) {
-            if (commands.empty()) {
-                Sleep(500);
-                continue;
-            }
-
+            if (commands.empty()) { Sleep(500); continue; }
             std::string command = commands.back();
             commands.pop_back();
-
             std::string m = matchCommands(command);
-
             if (m.empty()) m = decode(command);
-
-            if (!m.empty()) defender->escalate(UTIL::Pair<uint8_t, std::vector<std::string>>(0b010, std::vector<std::string>{m}));
+            if (m.empty()) m = command;
+            defender->escalate(UTIL::Pair<std::uint8_t, std::vector<std::string>>(0b010, std::vector<std::string>{m}));
         }
     }
-};
+}

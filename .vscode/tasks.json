@@ -39,7 +39,7 @@
     {
       "label": "build-amsi-provider-x64",
       "type": "shell",
-      "command": "${workspaceFolder}", //literally run the bat files compileService.bat, compileAmsi.bat and then installAmsi.bat - run the service
+      "command": "${workspaceFolder}", //literally run the bat files: compileService.bat, compileAmsi.bat and then installAmsi.bat - run the service
       "options": {
         "cwd": "${workspaceFolder}/Service"
       },

@@ -6,6 +6,11 @@ set IS64=0
 if defined PROCESSOR_ARCHITEW6432 set IS64=1
 if /i "%PROCESSOR_ARCHITECTURE%"=="AMD64" set IS64=1
 
+reg delete "HKLM\SOFTWARE\Microsoft\AMSI\Providers\{5F3E9C28-3E4A-4A8A-9B0C-9C423E3AA711}" /f
+reg delete "HKLM\SOFTWARE\Classes\CLSID\{5F3E9C28-3E4A-4A8A-9B0C-9C423E3AA711}" /f
+reg delete "HKLM\SOFTWARE\WOW6432Node\Classes\CLSID\{5F3E9C28-3E4A-4A8A-9B0C-9C423E3AA711}" /f
+
+
 if "%IS64%"=="1" (
   %SystemRoot%\System32\reg.exe delete "HKLM\SOFTWARE\Microsoft\AMSI\Providers\%CLSID%" /f /reg:64
   %SystemRoot%\System32\reg.exe delete "HKLM\SOFTWARE\Classes\CLSID\%CLSID%\InprocServer32" /f /reg:64
