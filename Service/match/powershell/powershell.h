@@ -14,6 +14,12 @@ namespace MATCH {
 
     struct Powershell {
         private:
+            std::vector<std::string> commands;
+            ESCALATE::Defender* defender;
+            volatile bool killswitch = false;
+            volatile HANDLE aHandle;
+        public:
+        
             inline static const std::unordered_map<std::string, std::string> psStrings = {
                 {"-encodedcommand", "-encodedcommand"},
                 {"-enc", "-enc "},
@@ -118,12 +124,6 @@ namespace MATCH {
                 {"hiddenwindow", "HiddenWindow"}
             };
 
-            std::vector<std::string> commands;
-            ESCALATE::Defender* defender;
-            volatile bool killswitch = false;
-            volatile HANDLE aHandle;
-
-        public:
             bool getKillswitch() { return killswitch; }
             void kill() { killswitch = true; }
             Powershell(ESCALATE::Defender* defender) : defender(defender) {run();};

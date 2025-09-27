@@ -3,58 +3,148 @@
 #include <cwchar>
 #include <ole2.h>
 
+void GhModuleAddRef() noexcept;
+void GhModuleRelease() noexcept;
+
 extern "C" const CLSID CLSID_Greathelm={0x5f3e9c28,0x3e4a,0x4a8a,{0x9b,0x0c,0x9c,0x42,0x3e,0x3a,0xa7,0x11}};
 extern "C" const IID IID_IAntimalwareProvider={0xb2cabfe3,0xfe04,0x42b1,{0xa5,0xdf,0x08,0xd4,0x83,0xd4,0xd1,0x25}};
 
-HMODULE g_hMod=nullptr;
+HMODULE g_hMod = nullptr;
 const wchar_t* kProviderName=L"Greathelm";
 
-bool gh_logw(const std::wstring& msg) {
-    wchar_t base[512] = L"";
-    DWORD n = GetEnvironmentVariableW(L"ProgramData", base, 512);
-    if (!n || n >= 512) return false;
-    std::wstring dir = std::wstring(base) + L"\\Greathelm";
-    CreateDirectoryW(dir.c_str(), nullptr);
-    std::wstring path = dir + L"\\events.log";
-    HANDLE h = CreateFileW(path.c_str(), FILE_APPEND_DATA, FILE_SHARE_READ | FILE_SHARE_WRITE, nullptr, OPEN_ALWAYS, FILE_ATTRIBUTE_NORMAL, nullptr);
+Provider::Provider() : refCount(1) {
+    GhModuleAddRef();
+}
+
+static bool write_log_line(const std::wstring& path, const std::wstring& line) {
+    HANDLE h = CreateFileW(path.c_str(), FILE_APPEND_DATA,
+                           FILE_SHARE_READ | FILE_SHARE_WRITE, nullptr,
+                           OPEN_ALWAYS, FILE_ATTRIBUTE_NORMAL, nullptr);
     if (h == INVALID_HANDLE_VALUE) return false;
-    SYSTEMTIME st; GetLocalTime(&st);
-    wchar_t wline[2048];
-    int wn = swprintf(wline, 2048, L"%04u-%02u-%02uT%02u:%02u:%02u %ls\r\n", st.wYear, st.wMonth, st.wDay, st.wHour, st.wMinute, st.wSecond, msg.c_str());
-    if (wn <= 0) { CloseHandle(h); return false; }
-    int bytes = WideCharToMultiByte(CP_UTF8, 0, wline, wn, nullptr, 0, nullptr, nullptr);
+    int bytes = WideCharToMultiByte(CP_UTF8, 0, line.c_str(), (int)line.size(), nullptr, 0, nullptr, nullptr);
     if (bytes <= 0) { CloseHandle(h); return false; }
-    std::string utf8; utf8.resize(bytes);
-    WideCharToMultiByte(CP_UTF8, 0, wline, wn, utf8.data(), bytes, nullptr, nullptr);
-    DWORD wrote = 0;
-    BOOL ok = WriteFile(h, utf8.data(), (DWORD)utf8.size(), &wrote, nullptr);
+    std::string utf8(bytes, '\0');
+    WideCharToMultiByte(CP_UTF8, 0, line.c_str(), (int)line.size(), utf8.data(), bytes, nullptr, nullptr);
+    DWORD wrote = 0; BOOL ok = WriteFile(h, utf8.data(), (DWORD)utf8.size(), &wrote, nullptr);
     CloseHandle(h);
     return ok && wrote == (DWORD)utf8.size();
 }
 
-static bool policy_allow(const void* data, size_t len) {
-    const wchar_t* name = LR"(\\.\pipe\AmsiPolicy)";
-    for (int i = 0; i < 20; ++i) {
-        if (WaitNamedPipeW(name, 250)) break;
-        if (GetLastError() != ERROR_FILE_NOT_FOUND && GetLastError() != ERROR_PIPE_BUSY) break;
-        Sleep(50);
+bool gh_logw(const std::wstring& msg) {
+    SYSTEMTIME st; GetLocalTime(&st);
+    wchar_t ts[64];
+    swprintf(ts, 64, L"%04u-%02u-%02uT%02u:%02u:%02u ", st.wYear, st.wMonth, st.wDay, st.wHour, st.wMinute, st.wSecond);
+    const std::wstring line = std::wstring(ts) + msg + L"\r\n";
+
+    wchar_t base[512] = L"";
+    DWORD n = GetEnvironmentVariableW(L"ProgramData", base, 512);
+    if (n && n < 512) {
+        std::wstring dir = std::wstring(base) + L"\\Greathelm";
+        CreateDirectoryW(dir.c_str(), nullptr);
+        if (write_log_line(dir + L"\\events.log", line)) return true;
     }
-    HANDLE h = CreateFileW(name, GENERIC_READ | GENERIC_WRITE, 0, nullptr, OPEN_EXISTING, 0, nullptr);
-    if (h == INVALID_HANDLE_VALUE) return true;
-    DWORD w = 0, r = 0, need = (DWORD)len;
-    if (!WriteFile(h, &need, sizeof need, &w, nullptr)) { CloseHandle(h); return true; }
-    size_t off = 0;
-    while (off < len) {
-        DWORD chunk = (DWORD)std::min(len - off, (size_t)65536);
-        if (!WriteFile(h, (const char*)data + off, chunk, &w, nullptr) || w == 0) { CloseHandle(h); return true; }
-        off += w;
+
+    wchar_t tmp[MAX_PATH] = L"";
+    if (GetTempPathW(MAX_PATH, tmp)) {
+        std::wstring dir = std::wstring(tmp) + L"Greathelm";
+        CreateDirectoryW(dir.c_str(), nullptr);
+        if (write_log_line(dir + L"\\events-provider.log", line)) return true;
     }
-    char verdict = 'A';
-    ReadFile(h, &verdict, 1, &r, nullptr);
-    CloseHandle(h);
-    return verdict != 'D';
+    return false;
 }
 
+
+static bool policy_allow(const uint8_t* data, size_t len) {
+    constexpr DWORD kTimeoutMs = 500;
+    constexpr DWORD kMaxMsg    = 262144;
+
+    if (!data || len == 0) return true;
+
+    const DWORD toSend = static_cast<DWORD>(std::min<size_t>(len, kMaxMsg));
+
+    if (!WaitNamedPipeW(LR"(\\.\pipe\AmsiPolicy)", kTimeoutMs)) {
+        return true;
+    }
+
+    HANDLE h = CreateFileW(LR"(\\.\pipe\AmsiPolicy)",
+                           GENERIC_READ | GENERIC_WRITE,
+                           0, nullptr, OPEN_EXISTING,
+                           FILE_FLAG_OVERLAPPED, nullptr);
+    if (h == INVALID_HANDLE_VALUE) {
+        return true;
+    }
+
+    bool allow = true;
+    OVERLAPPED ovw{}; OVERLAPPED ovr{};
+    ovw.hEvent = CreateEventW(nullptr, TRUE, FALSE, nullptr);
+    ovr.hEvent = CreateEventW(nullptr, TRUE, FALSE, nullptr);
+    if (!ovw.hEvent || !ovr.hEvent) {
+        if (ovw.hEvent) CloseHandle(ovw.hEvent);
+        if (ovr.hEvent) CloseHandle(ovr.hEvent);
+        CloseHandle(h);
+        return true;
+    }
+
+    auto cleanup = [&]() {
+        CloseHandle(ovw.hEvent);
+        CloseHandle(ovr.hEvent);
+        CloseHandle(h);
+    };
+
+    DWORD written = 0;
+    if (!WriteFile(h, &toSend, sizeof(toSend), nullptr, &ovw)) {
+        if (GetLastError() != ERROR_IO_PENDING ||
+            WaitForSingleObject(ovw.hEvent, kTimeoutMs) != WAIT_OBJECT_0 ||
+            !GetOverlappedResult(h, &ovw, &written, FALSE) ||
+            written != sizeof(toSend)) {
+            cleanup();
+            return true;
+        }
+    }
+
+    const BYTE* p = reinterpret_cast<const BYTE*>(data);
+    DWORD remaining = toSend;
+    while (remaining) {
+        ResetEvent(ovw.hEvent);
+        const DWORD chunk = remaining > 65536 ? 65536 : remaining;
+        if (!WriteFile(h, p, chunk, nullptr, &ovw)) {
+            if (GetLastError() != ERROR_IO_PENDING ||
+                WaitForSingleObject(ovw.hEvent, kTimeoutMs) != WAIT_OBJECT_0) {
+                cleanup();
+                return true;
+            }
+            DWORD got = 0;
+            if (!GetOverlappedResult(h, &ovw, &got, FALSE) || got == 0) {
+                cleanup();
+                return true;
+            }
+            written = got;
+        } else {
+            written = chunk;
+        }
+        p += written;
+        remaining -= written;
+    }
+
+    BYTE verdict = 'A';
+    ResetEvent(ovr.hEvent);
+    if (!ReadFile(h, &verdict, 1, nullptr, &ovr)) {
+        if (GetLastError() != ERROR_IO_PENDING ||
+            WaitForSingleObject(ovr.hEvent, kTimeoutMs) != WAIT_OBJECT_0) {
+            cleanup();
+            return true;
+        }
+        DWORD got = 0;
+        if (!GetOverlappedResult(h, &ovr, &got, FALSE) || got != 1) {
+            cleanup();
+            return true;
+        }
+    }
+    allow = (verdict != 'D');
+
+    cleanup();
+    return allow;
+}
 
 HRESULT Provider::QueryInterface(REFIID riid, void** ppv) {
     if (ppv) *ppv = nullptr;
@@ -89,26 +179,38 @@ HRESULT Provider::DisplayName(LPWSTR* name){
 void Provider::CloseSession(ULONGLONG){}
 
 HRESULT Provider::Scan(IAmsiStream* stream, AMSI_RESULT* result) {
+    gh_logw(L"1");
     if (!stream || !result) return E_INVALIDARG;
     *result = AMSI_RESULT_NOT_DETECTED;
-
+    gh_logw(L"2");
     ULONGLONG sz = 0; ULONG ret = 0; PUCHAR addr = nullptr;
     stream->GetAttribute(AMSI_ATTRIBUTE_CONTENT_SIZE, sizeof(sz), (PUCHAR)&sz, &ret);
     stream->GetAttribute(AMSI_ATTRIBUTE_CONTENT_ADDRESS, sizeof(addr), (PUCHAR)&addr, &ret);
-
+    gh_logw(L"3");
     if (addr && sz) {
         if (!policy_allow(addr, (size_t)sz)) { *result = AMSI_RESULT_DETECTED; return S_OK; }
+         gh_logw(L"4");
     } else {
         const ULONG chunk = 1 << 16;
         std::string buf; buf.resize(chunk);
         ULONGLONG pos = 0;
+        gh_logw(L"5");
         for (;;) {
+            gh_logw(L"6");
             ULONG read = 0;
             if (FAILED(stream->Read(pos, chunk, (PUCHAR)buf.data(), &read)) || read == 0) break;
-            if (!policy_allow(buf.data(), read)) { *result = AMSI_RESULT_DETECTED; return S_OK; }
+            if (!policy_allow(reinterpret_cast<const uint8_t*>(buf.data()), read)) {
+                *result = AMSI_RESULT_DETECTED; return S_OK;
+            }
             pos += read;
         }
+        gh_logw(L"7");
     }
-
+    gh_logw(L"8");
     return S_OK;
+}
+
+
+Provider::~Provider() {
+    GhModuleRelease();
 }

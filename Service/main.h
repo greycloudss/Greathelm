@@ -5,7 +5,10 @@
 #include "escalate/defender.h"
 
 #define SVCNAME TEXT("greathelm")
+#ifdef _MSC_VER
 #pragma comment(lib, "Advapi32.lib")
+#endif
+
 
 extern SERVICE_STATUS gSvcStatus;
 extern SERVICE_STATUS_HANDLE gSvcStatusHandle;

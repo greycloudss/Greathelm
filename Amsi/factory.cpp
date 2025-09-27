@@ -2,6 +2,9 @@
 #include "provider.h"
 #include <new>
 
+void GhLockServerAddRef() noexcept;
+void GhLockServerRelease() noexcept;
+
 HRESULT ClassFactory::QueryInterface(REFIID riid, void** ppv) {
     if (ppv) *ppv = nullptr;
     if (!ppv) return E_POINTER;
@@ -35,6 +38,11 @@ HRESULT ClassFactory::CreateInstance(IUnknown* outer, REFIID riid, void** ppv) {
     return hr;
 }
 
-HRESULT ClassFactory::LockServer(BOOL) {
+HRESULT ClassFactory::LockServer(BOOL fLock) {
+    if (fLock) {
+        GhLockServerAddRef();
+    } else {
+        GhLockServerRelease();
+    }
     return S_OK;
 }

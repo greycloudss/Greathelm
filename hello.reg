@@ -1,0 +1,13 @@
+Windows Registry Editor Version 5.00
+
+; COM registration
+[HKEY_CLASSES_ROOT\CLSID\{5f3e9c28-3e4a-4a8a-9b0c-9c423e3aa711}]
+@="Greathelm AMSI Provider"
+
+[HKEY_CLASSES_ROOT\CLSID\{5f3e9c28-3e4a-4a8a-9b0c-9c423e3aa711}\InprocServer32]
+@="E:\VU\winapi\Greathelm_Provider.dll"
+"ThreadingModel"="Both"
+
+; AMSI provider registration
+[HKEY_LOCAL_MACHINE\SOFTWARE\Microsoft\AMSI\Providers\{5f3e9c28-3e4a-4a8a-9b0c-9c423e3aa711}]
+@="Greathelm AMSI Provider"

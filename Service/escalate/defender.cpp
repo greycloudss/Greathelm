@@ -4,7 +4,10 @@
 #include <wtsapi32.h>
 #include "../utils/strings.h"
 #include "../match/powershell/powershell.h"
+
+#ifdef _MSC_VER
 #pragma comment(lib, "wscapi.lib")
+#endif
 
 static bool logSuspicion(const std::wstring& msg) {
     wchar_t base[512] = L"";

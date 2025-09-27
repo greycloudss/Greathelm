@@ -45,66 +45,68 @@ namespace MATCH {
     DWORD WINAPI AmsiPolicyServer(LPVOID pv) {
         MATCH::Powershell* self = (MATCH::Powershell*)pv;
 
-        SECURITY_DESCRIPTOR sd;
-        InitializeSecurityDescriptor(&sd, SECURITY_DESCRIPTOR_REVISION);
+        SECURITY_DESCRIPTOR sd; InitializeSecurityDescriptor(&sd, SECURITY_DESCRIPTOR_REVISION);
         SetSecurityDescriptorDacl(&sd, TRUE, nullptr, FALSE);
-        SECURITY_ATTRIBUTES sa;
-        sa.nLength = sizeof(sa);
-        sa.lpSecurityDescriptor = &sd;
-        sa.bInheritHandle = FALSE;
+        SECURITY_ATTRIBUTES sa{ sizeof(sa), &sd, FALSE };
 
         for (;;) {
-            HANDLE h = CreateNamedPipeW(LR"(\\.\pipe\AmsiPolicy)",
-                                        PIPE_ACCESS_DUPLEX,
-                                        PIPE_TYPE_BYTE | PIPE_READMODE_BYTE | PIPE_WAIT,
-                                        PIPE_UNLIMITED_INSTANCES,
-                                        4096, 4096, 0, &sa);
+            HANDLE h = CreateNamedPipeW(LR"(\\.\pipe\AmsiPolicy)", PIPE_ACCESS_DUPLEX,
+                PIPE_TYPE_BYTE | PIPE_READMODE_BYTE | PIPE_WAIT, PIPE_UNLIMITED_INSTANCES, 4096, 4096, 0, &sa);
             if (h == INVALID_HANDLE_VALUE) return 0;
 
             BOOL ok = ConnectNamedPipe(h, nullptr) ? TRUE : (GetLastError() == ERROR_PIPE_CONNECTED);
             if (!ok) { CloseHandle(h); continue; }
 
-            DWORD need = 0, got = 0;
+            DWORD need=0, got=0;
             if (!ReadFile(h, &need, sizeof need, &got, nullptr) || got != sizeof need) { DisconnectNamedPipe(h); CloseHandle(h); continue; }
 
-            std::vector<char> buf; buf.resize(need);
-            size_t off = 0;
-            while (off < buf.size()) {
-                DWORD r = 0;
-                if (!ReadFile(h, buf.data() + off, (DWORD)(buf.size() - off), &r, nullptr) || r == 0) break;
-                off += r;
+            constexpr DWORD kMax = 262144;
+            const DWORD want = need, take = want > kMax ? kMax : want;
+
+            std::vector<char> buf(take);
+            DWORD off = 0;
+            while (off < take) { DWORD r=0; if (!ReadFile(h, buf.data()+off, take-off, &r, nullptr) || r==0) break; off += r; }
+
+            DWORD drained = off; char sink[65536];
+            while (drained < want) {
+                DWORD toRead = (want - drained > sizeof(sink)) ? sizeof(sink) : (want - drained);
+                DWORD r=0; if (!ReadFile(h, sink, toRead, &r, nullptr) || r==0) break; drained += r;
             }
 
             char verdict = 'A';
-            if (off == buf.size()) verdict = evaluate(buf.data(), buf.size()) ? 'A' : 'D';
-
-            if (off == buf.size() && self) {
+            if (off && self) {
                 std::string cmd;
-                if (off >= 2 && buf[1] == 0x00) {
-                    const wchar_t* ws = (const wchar_t*)buf.data();
+                if (off >= 2 && (unsigned char)buf[1] == 0x00) {
+                    const wchar_t* ws = reinterpret_cast<const wchar_t*>(buf.data());
                     int wlen = (int)(off / 2);
                     int need8 = WideCharToMultiByte(CP_UTF8, 0, ws, wlen, nullptr, 0, nullptr, nullptr);
-                    if (need8 > 0) {
-                        cmd.resize(need8);
-                        WideCharToMultiByte(CP_UTF8, 0, ws, wlen, &cmd[0], need8, nullptr, nullptr);
-                    }
+                    if (need8 > 0) { cmd.resize(need8); WideCharToMultiByte(CP_UTF8, 0, ws, wlen, &cmd[0], need8, nullptr, nullptr); }
                 } else {
-                    cmd.assign(buf.begin(), buf.end());
+                    cmd.assign(buf.data(), buf.data() + off);
                 }
 
-                std::string m = self->matchCommands(cmd);
-                if (m.empty()) m = self->decode(cmd);
-                if (m.empty()) m = cmd;
-                self->getDefender()->escalate(UTIL::Pair<uint8_t, std::vector<std::string>>(0b010, std::vector<std::string>{m}));
+                std::string norm; norm.reserve(cmd.size());
+                for (unsigned char c : cmd) if (!isspace(c)) norm.push_back((char)tolower(c));
+
+                std::string reason;
+                for (const auto& kv : MATCH::Powershell::psStrings) {
+                    if (norm.find(kv.first) != std::string::npos) { reason = kv.second; break; }
+                }
+                if (reason.empty()) {
+                    std::string dec = self->decode(cmd); // checks -enc/base64 then reuses matchCommands
+                    if (!dec.empty()) reason = dec;
+                }
+
+                if (!reason.empty()) {
+                    verdict = 'D';
+                    self->getDefender()->escalate(UTIL::Pair<std::uint8_t, std::vector<std::string>>(0b010, { reason + " ; " + cmd }));
+                }
             }
 
-            DWORD w = 0;
-            WriteFile(h, &verdict, 1, &w, nullptr);
-            DisconnectNamedPipe(h);
-            CloseHandle(h);
+            DWORD w=0; WriteFile(h, &verdict, 1, &w, nullptr);
+            DisconnectNamedPipe(h); CloseHandle(h);
         }
     }
-
 
     void Powershell::run() {
         this->aHandle = CreateThread(nullptr, 0, AmsiPolicyServer, this, 0, nullptr);
