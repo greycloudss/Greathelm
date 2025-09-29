@@ -4,6 +4,7 @@
 #include <vector>
 #include <unordered_map>
 #include <cstdint>
+#include <string>
 #include "../../utils/strings.h"
 
 namespace ESCALATE { class Defender; }

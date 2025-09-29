@@ -187,34 +187,40 @@ void Provider::CloseSession(ULONGLONG){}
 
 HRESULT Provider::Scan(IAmsiStream* stream, AMSI_RESULT* result) {
     static std::atomic<bool> s_loggedScan{false};
+
     if (!s_loggedScan.exchange(true)) gh_logw(L"SCAN begin (provider)");
+
     if (!stream || !result) return E_INVALIDARG;
+
     *result = AMSI_RESULT_NOT_DETECTED;
-    gh_logw(L"2");
-    ULONGLONG sz = 0; ULONG ret = 0; PUCHAR addr = nullptr;
+
+    ULONGLONG sz = 0;
+    ULONG ret = 0;
+    PUCHAR addr = nullptr;
+
     stream->GetAttribute(AMSI_ATTRIBUTE_CONTENT_SIZE, sizeof(sz), (PUCHAR)&sz, &ret);
     stream->GetAttribute(AMSI_ATTRIBUTE_CONTENT_ADDRESS, sizeof(addr), (PUCHAR)&addr, &ret);
-    gh_logw(L"3");
+
     if (addr && sz) {
-        if (!policy_allow(addr, (size_t)sz)) { *result = AMSI_RESULT_DETECTED; return S_OK; }
-         gh_logw(L"4");
+        if (!policy_allow(addr, (size_t)sz)) {
+            *result = AMSI_RESULT_DETECTED;
+            return S_OK;
+        }
+
     } else {
         const ULONG chunk = 1 << 16;
         std::string buf; buf.resize(chunk);
         ULONGLONG pos = 0;
-        gh_logw(L"5");
         for (;;) {
-            gh_logw(L"6");
             ULONG read = 0;
             if (FAILED(stream->Read(pos, chunk, (PUCHAR)buf.data(), &read)) || read == 0) break;
+
             if (!policy_allow(reinterpret_cast<const uint8_t*>(buf.data()), read)) {
                 *result = AMSI_RESULT_DETECTED; return S_OK;
             }
             pos += read;
         }
-        gh_logw(L"7");
     }
-    gh_logw(L"8");
     return S_OK;
 }
 

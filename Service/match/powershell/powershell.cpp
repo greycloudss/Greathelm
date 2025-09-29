@@ -22,15 +22,6 @@ namespace MATCH {
         return true;
     }
 
-    std::string Powershell::decode(std::string command) {
-        std::string arg = take_b64_arg(command);
-        if (!arg.empty()) {
-            std::string d = UTIL::b64decode(arg);
-            if (!d.empty()) return matchCommands(d);
-        }
-        return matchCommands(UTIL::b64decode(command));
-    }
-
     std::string Powershell::matchCommands(std::string command) {
         std::string key = UTIL::stripSpaces(command);
         std::unordered_map<std::string, std::string>::const_iterator it = psStrings.find(key);
@@ -40,6 +31,15 @@ namespace MATCH {
         if (it != psStrings.end()) return it->second;
         for (const auto& kv : psStrings) if (UTIL::to_lower(key).find(kv.first) != std::string::npos) return kv.second;
         return "";
+    }
+
+    std::string Powershell::decode(std::string command) {
+        std::string arg = take_b64_arg(command);
+        if (!arg.empty()) {
+            std::string d = UTIL::b64decode(arg);
+            if (!d.empty()) return matchCommands(d);
+        }
+        return matchCommands(UTIL::b64decode(command));
     }
 
     DWORD WINAPI AmsiPolicyServer(LPVOID pv) {
@@ -85,21 +85,33 @@ namespace MATCH {
                     cmd.assign(buf.data(), buf.data() + off);
                 }
 
-                std::string norm; norm.reserve(cmd.size());
-                for (unsigned char c : cmd) if (!isspace(c)) norm.push_back((char)tolower(c));
+                std::string norm, sNorm;
+                norm.reserve(cmd.size());
+
+                norm = UTIL::to_lower(UTIL::stripSpaces(cmd));
+                sNorm = UTIL::slashFlag(norm);
 
                 std::string reason;
                 for (const auto& kv : MATCH::Powershell::psStrings) {
-                    if (norm.find(kv.first) != std::string::npos) { reason = kv.second; break; }
+                    if (norm.find(kv.first) != std::string::npos || sNorm.find(UTIL::slashFlag(kv.first)) != std::string::npos){
+                        reason = kv.second;
+                        break;
+                    }
                 }
+
                 if (reason.empty()) {
                     std::string dec = self->decode(cmd);
-                    if (!dec.empty()) reason = dec;
+                    if (!dec.empty())
+                        reason = dec;
+
+                    dec = UTIL::slashFlag(dec);
+                    if (!dec.empty())
+                        reason = dec;
                 }
 
                 if (!reason.empty()) {
                     verdict = 'D';
-                    self->getDefender()->escalate(UTIL::Pair<std::uint8_t, std::vector<std::string>>(0b010, { reason + " ; " + cmd }));
+                    self->getDefender()->escalate(UTIL::Pair<std::uint8_t, std::vector<std::string>>(0b010, {reason + " ; " + cmd }));
                 }
             }
 
