@@ -1,8 +1,15 @@
 #pragma once
+
+#include <iostream>
+#include <windows.h>
+#include <vector>
+#include <unordered_map>
+#include <cstdint>
+#include <string>
+
 #include "../../utils/strings.h"
 #include "../../escalate/defender.h"
 
-#include <windows.h>
 
 namespace MATCH {
     class Runnable {
@@ -28,6 +35,7 @@ namespace MATCH {
             ESCALATE::Defender* defender;
             volatile bool killswitch = false;
 
+            std::vector<std::string> suspV = std::vector<std::string>();
         public:
             volatile bool getKillswitch() {
                 return killswitch;

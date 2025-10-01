@@ -71,9 +71,19 @@ namespace ESCALATE {
     bool Defender::escalateFW(std::vector<std::string>) { return true; }
 
     bool ESCALATE::Defender::escalate(const UTIL::Pair<uint8_t, std::vector<std::string>>& threats) {
-        for (const auto& s : threats.getB())
-            logSuspicion(L"[PowerShell] " + UTIL::to_wstring_utf8(s));
-        return escalatePS(threats.getB());
+        if ((threats.getA() & 0b001) == 0b001) {
+            for (const auto& s : threats.getB())
+                logSuspicion(L"[Runnables] " + UTIL::to_wstring_utf8(s));
+            return escalateTP(threats.getB());   
+        }
+
+        if ((threats.getA() & 0b010) == 0b010) {
+            for (const auto& s : threats.getB())
+                logSuspicion(L"[PowerShell] " + UTIL::to_wstring_utf8(s));
+            return escalatePS(threats.getB());            
+        }
+
+        return false;
     }
 
 
