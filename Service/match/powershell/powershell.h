@@ -13,7 +13,7 @@ namespace MATCH {
     DWORD WINAPI AmsiPolicyServer(LPVOID pv);
     bool evaluate(const void* p, size_t n);
 
-    struct Powershell {
+    class Powershell {
         private:
             std::vector<std::string> commands;
             ESCALATE::Defender* defender;
@@ -127,6 +127,7 @@ namespace MATCH {
 
             bool getKillswitch() { return killswitch; }
             void kill() { killswitch = true; }
+            
             Powershell(ESCALATE::Defender* defender) : defender(defender) {run();};
             std::string decode(std::string command);
             std::string matchCommands(std::string command);

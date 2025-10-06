@@ -62,4 +62,11 @@ namespace UTIL {
         
         return w;
     }
+
+    byte Octet(const wchar_t s[4]) {
+        wchar_t buf[5];
+        wmemcpy(buf, s, 4);
+        buf[4] = L'\0';
+        return static_cast<byte>(wcstoul(buf, nullptr, 10));
+    }
 };

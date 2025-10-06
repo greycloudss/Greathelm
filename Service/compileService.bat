@@ -1,1 +1,3 @@
 g++ -std=c++20 -O2 -s -DNDEBUG -DUNICODE -D_UNICODE -D_WIN32_WINNT=0x0A00 main.cpp escalate\defender.cpp match\powershell\powershell.cpp -o ..\Greathelm_service.exe -static -static-libstdc++ -static-libgcc -Wl,-Bstatic -lwinpthread -Wl,-Bdynamic -lole32 -loleaut32 -luuid -ladvapi32 -lws2_32 -lwscapi -lwtsapi32 -Wall & pause
+
+: g++ -std=c++20 -O2 -s -DNDEBUG -DUNICODE -D_UNICODE -D_WIN32_WINNT=0x0A00 main.cpp escalate\defender.cpp escalate\firewall.cpp match\powershell\powershell.cpp -o ..\Greathelm_service.exe -static -static-libstdc++ -static-libgcc -Wl,-Bstatic -lwinpthread -Wl,-Bdynamic -lole32 -loleaut32 -luuid -ladvapi32 -lws2_32 -lwscapi -lwtsapi32 -Wall & pause

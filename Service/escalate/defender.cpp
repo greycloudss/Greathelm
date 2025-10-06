@@ -2,30 +2,54 @@
 #include <memory>
 #include <windows.h>
 #include <wtsapi32.h>
+#include <regex>
+
+#include <fwpmu.h>
+
+#pragma comment(lib, "fwpuclnt.lib")
+#pragma comment(lib, "rpcrt4.lib")
+
 #include "../utils/strings.h"
 #include "../match/powershell/powershell.h"
 
+#include "event.h"
+#include "firewall.h"
+
 #ifdef _MSC_VER
-#pragma comment(lib, "wscapi.lib")
+    #pragma comment(lib, "wscapi.lib")
 #endif
 
 static bool logSuspicion(const std::wstring& msg) {
     wchar_t base[512] = L"";
     DWORD n = GetEnvironmentVariableW(L"ProgramData", base, 512);
     if (!n || n >= 512) return false;
+
     std::wstring dir = std::wstring(base) + L"\\Greathelm";
     CreateDirectoryW(dir.c_str(), nullptr);
     std::wstring path = dir + L"\\events.log";
+
     HANDLE h = CreateFileW(path.c_str(), FILE_APPEND_DATA, FILE_SHARE_READ | FILE_SHARE_WRITE, nullptr, OPEN_ALWAYS, FILE_ATTRIBUTE_NORMAL, nullptr);
     if (h == INVALID_HANDLE_VALUE) return false;
     SYSTEMTIME st; GetLocalTime(&st);
+
     wchar_t wline[2048];
     int wn = swprintf(wline, 2048, L"%04u-%02u-%02uT%02u:%02u:%02u %ls\r\n", st.wYear, st.wMonth, st.wDay, st.wHour, st.wMinute, st.wSecond, msg.c_str());
-    if (wn <= 0) { CloseHandle(h); return false; }
+
+    if (wn <= 0) {
+        CloseHandle(h);
+        return false;
+    }
+
     int bytes = WideCharToMultiByte(CP_UTF8, 0, wline, wn, nullptr, 0, nullptr, nullptr);
-    if (bytes <= 0) { CloseHandle(h); return false; }
+    
+    if (bytes <= 0) {
+        CloseHandle(h);
+        return false;
+    }
+
     std::string utf8; utf8.resize(bytes);
     WideCharToMultiByte(CP_UTF8, 0, wline, wn, utf8.data(), bytes, nullptr, nullptr);
+
     DWORD wrote = 0;
     BOOL ok = WriteFile(h, utf8.data(), (DWORD)utf8.size(), &wrote, nullptr);
     CloseHandle(h);
@@ -33,6 +57,17 @@ static bool logSuspicion(const std::wstring& msg) {
 }
 
 namespace ESCALATE {
+    std::wstring Defender::getNetworkTarget(const std::wstring& text) {
+        static const std::wregex pattern(
+            LR"((?i)\b((([a-zA-Z0-9-]+\.)+[a-zA-Z]{2,}(:\d{1,5})?)|((25[0-5]|2[0-4]\d|1\d{2}|[1-9]?\d)(\.|$)){4}(:\d{1,5})?)\b)",
+            std::regex::icase);
+        std::wsmatch match;
+        if (std::regex_search(text, match, pattern))
+            return match.str();
+        return L"";
+    }
+
+
     DWORD WINAPI warnThread(LPVOID param) {
         std::unique_ptr<std::wstring> p(static_cast<std::wstring*>(param));
         logSuspicion(L"SHOW: " + *p);
@@ -52,6 +87,7 @@ namespace ESCALATE {
 
     Defender::Defender(uint8_t flag, LPVOID ps, LPVOID runnable, LPVOID kernel) {
         flags = flag;
+        fwall = new ESCALATE::Firewall();
         powershell = static_cast<MATCH::Powershell*>(ps);
         logSuspicion(L"Service start");
     }
@@ -61,25 +97,46 @@ namespace ESCALATE {
             std::string s = std::move(commands.back());
             commands.pop_back();
             std::wstring ws = UTIL::to_wstring_utf8(s);
+
+
+            if (getNetworkTarget(ws).empty()) {
+                std::vector<std::wstring>* wsVec = new std::vector<std::wstring>();
+                wsVec->push_back(ws);
+                escalateFW(wsVec);
+            }
+
             HANDLE th = CreateThread(nullptr, 0, warnThread, new std::wstring(std::move(ws)), 0, nullptr);
             if (th) CloseHandle(th);
         }
+
         return true;
     }
 
-    bool Defender::escalateTP(std::vector<std::string>) { return true; }
-    bool Defender::escalateFW(std::vector<std::string>) { return true; }
+    bool Defender::escalateTP(std::vector<std::string> runnables) {
+        return true;
+    }
+
+
+    bool Defender::escalateFW(std::vector<std::wstring>* connections) {
+        
+
+        return true;
+    }
 
     bool ESCALATE::Defender::escalate(const UTIL::Pair<uint8_t, std::vector<std::string>>& threats) {
-        for (const auto& s : threats.getB())
-            logSuspicion(L"[PowerShell] " + UTIL::to_wstring_utf8(s));
-        return escalatePS(threats.getB());
+        if (threats.getA() == 0b010) {
+            for (const auto& s : threats.getB())
+                logSuspicion(L"[PowerShell] " + UTIL::to_wstring_utf8(s));
+            return escalatePS(threats.getB());
+        }
     }
 
 
     void Defender::run() {}
 
     Defender::~Defender() {
+        delete fwall;
+        
         if (powershell)  {
             powershell->kill();
             powershell = nullptr;

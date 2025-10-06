@@ -31,8 +31,10 @@ extern "C" BOOL WINAPI DllMain(HINSTANCE h, DWORD r, LPVOID) {
 extern "C" DLL_EXPORT HRESULT WINAPI DllGetClassObject(REFCLSID rclsid, REFIID riid, void** ppv) {
     if (ppv) *ppv = nullptr;
     if (rclsid != CLSID_Greathelm) return CLASS_E_CLASSNOTAVAILABLE;
+    
     ClassFactory* f = new(std::nothrow) ClassFactory();
     if (!f) return E_OUTOFMEMORY;
+
     HRESULT hr = f->QueryInterface(riid, ppv);
     f->Release();
     return hr;
@@ -94,11 +96,13 @@ extern "C" DLL_EXPORT HRESULT WINAPI DllUnregisterServer(void) {
     const wchar_t* AMSI_BASE = L"SOFTWARE\\Microsoft\\AMSI";
     const std::wstring keyProv  = std::wstring(AMSI_BASE) + L"\\Providers\\"  + clsid;
     const std::wstring keyProv2 = std::wstring(AMSI_BASE) + L"\\Providers2\\" + clsid;
+
     RegDeleteKeyW(HKEY_LOCAL_MACHINE, keyProv.c_str());
     RegDeleteKeyW(HKEY_LOCAL_MACHINE, keyProv2.c_str());
 
     const std::wstring keyInproc  = L"CLSID\\" + clsid + L"\\InprocServer32";
     const std::wstring keyClsid   = L"CLSID\\" + clsid;
+
     RegDeleteKeyW(HKEY_CLASSES_ROOT, keyInproc.c_str());
     RegDeleteKeyW(HKEY_CLASSES_ROOT, keyClsid.c_str());
     return S_OK;
