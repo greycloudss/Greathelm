@@ -1,48 +1,102 @@
+#ifndef _WIN32_WINNT
+#define _WIN32_WINNT 0x0601
+#endif
+#ifndef NTDDI_VERSION
+#define NTDDI_VERSION NTDDI_WIN7
+#endif
+
 #include "firewall.h"
+#include <unordered_map>
+#include <mutex>
+#include <regex>
+#include <sdkddkver.h>
+#include <winsock2.h>
+#include <ws2tcpip.h>
+#include <windows.h>
 
-#include "../utils/misc.h"
+using namespace ESCALATE;
 
+static std::string narrow_utf8(const std::wstring& ws) {
+    if (ws.empty()) return {};
+    int n = WideCharToMultiByte(CP_UTF8, 0, ws.c_str(), (int)ws.size(), nullptr, 0, nullptr, nullptr);
+    std::string s(n, 0);
+    WideCharToMultiByte(CP_UTF8, 0, ws.c_str(), (int)ws.size(), s.data(), n, nullptr, nullptr);
+    return s;
+}
 
+static bool run_cmd(const std::wstring& cmd) {
+    STARTUPINFOW si{}; si.cb = sizeof(si);
+    PROCESS_INFORMATION pi{};
+    std::wstring cl = L"cmd.exe /C " + cmd;
+    if (!CreateProcessW(nullptr, cl.data(), nullptr, nullptr, FALSE, CREATE_NO_WINDOW, nullptr, nullptr, &si, &pi)) return false;
+    WaitForSingleObject(pi.hProcess, INFINITE);
+    DWORD ec = 1; GetExitCodeProcess(pi.hProcess, &ec);
+    CloseHandle(pi.hThread); CloseHandle(pi.hProcess);
+    return ec == 0;
+}
 
-bool ESCALATE::Firewall::initFirewall() {
+static std::mutex g_mtx;
+static std::unordered_map<std::string, int> g_rules;
 
-
+bool Firewall::addBlock(const FlexAddress* ip) {
+    if (!ip) return false;
+    std::wstring wip = UTIL::to_wstring_utf8(ip->getIPstr());
+    std::wstring name = L"Greathelm_" + wip;
+    {
+        std::lock_guard<std::mutex> lk(g_mtx);
+        if (g_rules.count(ip->getIPstr())) return true;
+    }
+    std::wstring addOut = L"netsh advfirewall firewall add rule name=\"" + name + L"\" dir=out action=block remoteip=" + wip + L" enable=yes";
+    std::wstring addIn  = L"netsh advfirewall firewall add rule name=\"" + name + L"\" dir=in action=block remoteip=" + wip + L" enable=yes";
+    bool a = run_cmd(addOut);
+    bool b = run_cmd(addIn);
+    if (a || b) {
+        std::lock_guard<std::mutex> lk(g_mtx);
+        g_rules[ip->getIPstr()] = 1;
+        return true;
+    }
     return false;
 }
 
-ESCALATE::Firewall::Firewall() {
-
+bool Firewall::removeBlock(const FlexAddress* ip){
+    if(!ip) return false;
+    std::wstring wip = UTIL::to_wstring_utf8(ip->getIPstr());
+    std::wstring name = L"Greathelm_" + wip;
+    std::wstring delOut = L"netsh advfirewall firewall delete rule name=\"" + name + L"\" dir=out";
+    std::wstring delIn  = L"netsh advfirewall firewall delete rule name=\"" + name + L"\" dir=in";
+    bool a = run_cmd(delOut);
+    bool b = run_cmd(delIn);
+    {
+        std::lock_guard<std::mutex> lk(g_mtx);
+        g_rules.erase(ip->getIPstr());
+    }
+    return a || b;
 }
 
-ESCALATE::Firewall::~Firewall() {
-
-}
-
-
-
-
-UTIL::Pair<const char, const byte*>* ESCALATE::Firewall::dnsResolve(std::wstring url) {
+FlexAddress* Firewall::dnsResolve(std::wstring url) {
     WSADATA w; if (WSAStartup(MAKEWORD(2,2), &w) != 0) return nullptr;
-    addrinfoW hints = {}; hints.ai_family = AF_UNSPEC; addrinfoW* res = nullptr;
+    addrinfoW hints{};
+    hints.ai_family = AF_UNSPEC;
+    hints.ai_socktype = SOCK_STREAM;
+    addrinfoW* res = nullptr;
+
     if (GetAddrInfoW(url.c_str(), nullptr, &hints, &res) != 0 || !res) {
         WSACleanup();
         return nullptr;
     }
 
-    UTIL::Pair<const char, const byte*>* out = nullptr;
+    FlexAddress* out = nullptr;
+
     for (addrinfoW* ai = res; ai; ai = ai->ai_next) {
         if (ai->ai_family == AF_INET) {
-            auto sa = reinterpret_cast<sockaddr_in*>(ai->ai_addr);
-            byte* b = new byte[4];
-            unsigned char* p = reinterpret_cast<unsigned char*>(&sa->sin_addr.S_un.S_addr);
-            b[0]=p[0]; b[1]=p[1]; b[2]=p[2]; b[3]=p[3];
-            out = new UTIL::Pair<const char, const byte*>(0, b);
+            wchar_t buf[INET_ADDRSTRLEN] = {0};
+            InetNtopW(AF_INET, &reinterpret_cast<sockaddr_in*>(ai->ai_addr)->sin_addr, buf, INET_ADDRSTRLEN);
+            out = new FlexAddress(IPver::v4, narrow_utf8(buf));
             break;
         } else if (ai->ai_family == AF_INET6) {
-            auto sa6 = reinterpret_cast<sockaddr_in6*>(ai->ai_addr);
-            byte* b = new byte[16];
-            memcpy(b, sa6->sin6_addr.u.Byte, 16);
-            out = new UTIL::Pair<const char, const byte*>(1, b);
+            wchar_t buf[INET6_ADDRSTRLEN] = {0};
+            InetNtopW(AF_INET6, &reinterpret_cast<sockaddr_in6*>(ai->ai_addr)->sin6_addr, buf, INET6_ADDRSTRLEN);
+            out = new FlexAddress(IPver::v6, narrow_utf8(buf));
             break;
         }
     }
@@ -51,180 +105,57 @@ UTIL::Pair<const char, const byte*>* ESCALATE::Firewall::dnsResolve(std::wstring
     return out;
 }
 
-
-// -------------------------- whitelist and blocking --------------------------
-
-bool ESCALATE::Firewall::checkAvailability(const std::wstring ip) {
-
+bool Firewall::isLimited(const FlexAddress* ip) {
     return false;
 }
 
-bool ESCALATE::Firewall::addBlockIPv4(const byte* ip) {
+DWORD WINAPI blockYN(LPVOID param) {
+    auto* castParam = static_cast<UTIL::Pair<Firewall, FlexAddress>*>(param);
 
-    return false;
+    std::string text = "Should block: " + castParam->getB().getIPstr() + "?";
+    int r = MessageBoxExW(nullptr, UTIL::to_wstring_utf8(text).c_str(), L"Greathelm | Firewall", MB_YESNO | MB_ICONQUESTION, 0);
+
+    delete castParam;
+
+    return r == IDYES ? 1u : 0u;
 }
 
-bool ESCALATE::Firewall::addBlockIPv6(const byte* ip) {
+DWORD Firewall::rateLimit(LPVOID param) {
+    FlexAddress* p = reinterpret_cast<FlexAddress*>(param);
 
-    return false;
-}
+    if (!p || isLimited(p)) return 1;
 
-bool ESCALATE::Firewall::removeBlockIPv4(const byte* ip) {
+    addBlock(p);
+    Sleep(5000);
+    removeBlock(p);
 
-    return false;
-}
-
-bool ESCALATE::Firewall::removeBlockIPv6(const byte* ip) {
-
-    return false;
-}
-
-bool ESCALATE::Firewall::addWhitelist(std::wstring ip) {
-    
-    return false;
-}
-
-bool ESCALATE::Firewall::addWhitelist(std::wstring url) {
-
-
-    return false;
-}
-
-INT_PTR CALLBACK DlgProc(HWND d, UINT m, WPARAM w, LPARAM l) {
-    if (m == WM_INITDIALOG) {
-        const std::wstring* ip = reinterpret_cast<const std::wstring*>(l);
-        std::wstring buf(256, L'\0');
-        StringCchPrintfW(buf.data(), buf.size(), L"Should I rate limit: %ls ip?", ip->c_str());
-        SetDlgItemTextW(d, 201, buf.c_str());
-        return TRUE;
-    }
-    if (m == WM_COMMAND && (LOWORD(w) == IDYES || LOWORD(w) == IDNO)) {
-        EndDialog(d, LOWORD(w));
-        return TRUE;
-    }
-    return FALSE;
-}
-
-DWORD WINAPI ESCALATE::Firewall::blockYN(LPVOID param) {
-    std::wstring* ip = static_cast<std::wstring*>(param);
-    
-    INT_PTR retVal = DialogBoxParamW(UTIL::GetInst(), MAKEINTRESOURCEW(IDD_RATE), nullptr, DlgProc, (LPARAM)ip);
-   
-    switch ((int)retVal) {
-        case IDYES:
-            return rateLimit((LPVOID)parseIP(*ip));
-        case IDNO:
-            return 0;
-        default:
-            return GetLastError();
-    }
-}
-
-DWORD WINAPI ESCALATE::Firewall::rateLimit(LPVOID param) {
-    //input pair to see what type of ip to block element A is the flag, element B is the ip itself
-    UTIL::Pair<const char, const byte*>* abc = (UTIL::Pair<const char, const byte*>*) param;
-    if (abc->getA() == 0) {
-        addBlockIPv4(abc->getB());
-        Sleep(5000);
-        removeBlockIPv4(abc->getB());
-    } else {
-        addBlockIPv6(abc->getB());
-        Sleep(5000);
-        removeBlockIPv6(abc->getB());
-    }
     return 0;
 }
 
-UTIL::Pair<char, byte*>* ESCALATE::Firewall::parseIPv6(std::wstring ip) {
-    std::vector<std::wstring> tokens;
-    tokens.reserve(9);
-    size_t start = 0;
-    for (size_t i = 0; i <= ip.size(); ++i) {
-        if (i == ip.size() || ip[i] == L':') {
-            tokens.emplace_back(ip.substr(start, i - start));
-            start = i + 1;
-        }
-    }
-
-    int dbl = -1;
-    std::vector<uint16_t> parts;
-    for (size_t i = 0; i < tokens.size(); ++i) {
-        const std::wstring& t = tokens[i];
-        if (t.empty()) {
-            if (dbl == -1) dbl = (int)parts.size();
-            continue;
-        }
-        if (t.find(L'.') != std::wstring::npos) {
-            byte v4[4];
-            if (!UTIL::ParseIPv4Octets(t, v4)) return nullptr;
-            parts.push_back((uint16_t(v4[0]) << 8) | v4[1]);
-            parts.push_back((uint16_t(v4[2]) << 8) | v4[3]);
-        } else {
-            uint16_t v = 0;
-            if (!UTIL::ParseHex16(t, v)) return nullptr;
-            parts.push_back(v);
-        }
-    }
-
-    if (dbl >= 0) {
-        int missing = 8 - (int)parts.size();
-        if (missing < 0) return nullptr;
-        parts.insert(parts.begin() + dbl, missing, 0);
-    }
-    if (parts.size() != 8) return nullptr;
-
-    byte* out = new byte[16];
-    for (int i = 0; i < 8; ++i) {
-        out[i * 2 + 0] = static_cast<byte>((parts[i] >> 8) & 0xFF);
-        out[i * 2 + 1] = static_cast<byte>(parts[i] & 0xFF);
-    }
-    return new UTIL::Pair<char, byte*>(1, out);
-}
-
-UTIL::Pair<char, byte*>* ESCALATE::Firewall::parseIPv4(std::wstring ip) {
-    byte* out = new byte[4];
-    if (!UTIL::ParseIPv4Octets(ip, out)) { delete[] out; return nullptr; }
-    return new UTIL::Pair<char, byte*>(0, out);
-}
-
-std::wstring ESCALATE::Firewall::formatIP(UTIL::Pair<const char, const byte*>* ip) {
-
-    return {};
-}
-/*
-    std::wstring Defender::getNetworkTarget(const std::wstring& text) {
-        static const std::wregex pattern(
-            LR"((?i)\b((([a-zA-Z0-9-]+\.)+[a-zA-Z]{2,}(:\d{1,5})?)|((25[0-5]|2[0-4]\d|1\d{2}|[1-9]?\d)(\.|$)){4}(:\d{1,5})?)\b)",
-            std::regex::icase);
-        std::wsmatch match;
-        if (std::regex_search(text, match, pattern))
-            return match.str();
-        return L"";
-    }
-
-*/
-byte* ESCALATE::Firewall::parseURL(std::wstring url) {
+FlexAddress* Firewall::parseURL(std::wstring url) {
     const std::wregex pattern(
-    LR"(^(https?)://(?:[A-Za-z0-9._~\-!$&'()*+,;=%]+@)?(\[[0-9A-Fa-f:.]+\]|(?:\d{1,3}\.){3}\d{1,3}|(?:[A-Za-z0-9-]{1,63}\.)+[A-Za-z]{2,63})(?::(\d{2,5}))?(?:/[^?\s#]*)?(?:\?[^#\s]*)?(?:#\S*)?$)",
-    std::regex::icase);
-    
-    std::wstring str;
-
+        LR"(^(https?)://(?:[A-Za-z0-9._~\-!$&'()*+,;=%]+@)?(\[[0-9A-Fa-f:.]+\]|(?:\d{1,3}\.){3}\d{1,3}|(?:[A-Za-z0-9-]{1,63}\.)+[A-Za-z]{2,63})(?::(\d{2,5}))?(?:/[^?\s#]*)?(?:\?[^#\s]*)?(?:#\S*)?$)",
+        std::regex::icase);
     std::wsmatch m;
-    if (std::regex_match(url, m, pattern)) str = m[2].str();
-    else return nullptr;
 
-    parseIP(str);
+    if (!std::regex_match(url, m, pattern)) return nullptr;
+    std::wstring host = m[2].str();
+
+    if (!host.empty() && host.front() == L'[' && host.back() == L']') host = host.substr(1, host.size() - 2);
+    std::string h = narrow_utf8(host);
+    IN_ADDR v4{};
+
+    if (InetPtonA(AF_INET, h.c_str(), &v4) == 1) return new FlexAddress(IPver::v4, h);
+    IN6_ADDR v6{};
+
+    if (InetPtonA(AF_INET6, h.c_str(), &v6) == 1) return new FlexAddress(IPver::v6, h);
+
+    return dnsResolve(host);
 }
 
-// -------------------------- wrapper -------------------------- 
+bool Firewall::escalate(const FlexAddress ip) {
+    auto* abc = new UTIL::Pair<Firewall, FlexAddress>(*this, ip);
+    CreateThread(nullptr, 0, blockYN, (LPVOID)abc, 0, nullptr);
 
-UTIL::Pair<char, byte*>* ESCALATE::Firewall::parseIP(std::wstring ip) {
-    // the moment i realised the weakness of my flesh
-    return ([&]{ for (wchar_t a : ip) if (a == L'.') return true; return false; }()) ? parseIPv4(ip) : parseIPv6(ip);
-}
-
-bool ESCALATE::Firewall::escalate(UTIL::Pair<char, byte*>* ipxflag) {
-
-    return false;
+    return true;
 }

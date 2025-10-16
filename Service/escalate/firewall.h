@@ -6,8 +6,14 @@
     #define UNICODE
 #endif
 
-#define IDD_RATE 200
-#define IDC_PROMPT 201
+#ifndef _WIN32_WINNT
+#define _WIN32_WINNT 0x0601
+#endif
+#ifndef NTDDI_VERSION
+#define NTDDI_VERSION NTDDI_WIN7
+#endif
+#include <sdkddkver.h>
+#include <fwptypes.h>
 
 #include <memory>
 #include <winsock2.h>
@@ -22,6 +28,7 @@
 
 #include "../utils/pair.h"
 #include "../utils/strings.h"
+#include "ip.h"
 
 
 #pragma comment(lib, "fwpuclnt.lib")
@@ -32,39 +39,17 @@ namespace ESCALATE { class Defender; }
 
 namespace ESCALATE {
     class Firewall {
-        private:
-            UTIL::Pair<char, byte*>* parseIPv6(std::wstring ip);
-            UTIL::Pair<char, byte*>* parseIPv4(std::wstring ip);
-
-            bool initFirewall();
-
-            std::vector<HANDLE> limitedAdd;
-
-
-            // rate limit with threads
         public:
-            Firewall();
-            ~Firewall();    
+            bool addBlock(const FlexAddress* ip);
+            bool removeBlock(const FlexAddress* ip);
 
-            bool addBlockIPv4(const byte* ip);
-            bool addBlockIPv6(const byte* ip);
-            bool removeBlockIPv4(const byte* ip);
-            bool removeBlockIPv6(const byte* ip);
+            FlexAddress* dnsResolve(std::wstring url);
+            bool isLimited(const FlexAddress* ip);
 
-            UTIL::Pair<const char, const byte*>* dnsResolve(std::wstring url);
-            bool checkAvailability(std::wstring ip);
-            bool addWhitelist(std::wstring ip);
-            bool addWhitelist(std::wstring url);
+            DWORD rateLimit(LPVOID param);
 
-            DWORD WINAPI blockYN(LPVOID param);
-            DWORD WINAPI rateLimit(LPVOID param);
-
-            std::wstring formatIP(UTIL::Pair<const char, const byte*>* ip);
-
-            byte* parseURL(std::wstring url);
-            UTIL::Pair<char, byte*>* parseIP(std::wstring ip);
+            FlexAddress* parseURL(std::wstring url);
             
-            bool escalate(UTIL::Pair<char, byte*>* ipxflag);
-
+            bool escalate(const FlexAddress ip);
     };
 };

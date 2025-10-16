@@ -119,7 +119,6 @@ namespace ESCALATE {
 
     bool Defender::escalateFW(std::vector<std::wstring>* connections) {
         
-
         return true;
     }
 
@@ -130,9 +129,6 @@ namespace ESCALATE {
             return escalatePS(threats.getB());
         }
     }
-
-
-    void Defender::run() {}
 
     Defender::~Defender() {
         delete fwall;

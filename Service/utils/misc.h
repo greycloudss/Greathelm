@@ -1,5 +1,7 @@
 #pragma once
 #include <windows.h>
+#include <cstdint>
+#include <string>
 
 namespace UTIL {
     inline HINSTANCE GetInst() {
