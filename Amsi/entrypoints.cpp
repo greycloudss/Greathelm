@@ -1,3 +1,4 @@
+// entrypoints.cpp
 #include <windows.h>
 #include <unknwn.h>
 #include "factory.h"
@@ -15,11 +16,20 @@
 
 static std::atomic<long> g_objCount{0};
 static std::atomic<long> g_lockCount{0};
+HMODULE g_hMod;
 
-void GhModuleAddRef() noexcept { g_objCount.fetch_add(1, std::memory_order_relaxed); }
-void GhModuleRelease() noexcept { g_objCount.fetch_sub(1, std::memory_order_relaxed); }
-void GhLockServerAddRef() noexcept { g_lockCount.fetch_add(1, std::memory_order_relaxed); }
-void GhLockServerRelease() noexcept { g_lockCount.fetch_sub(1, std::memory_order_relaxed); }
+void GhModuleAddRef() noexcept {
+    g_objCount.fetch_add(1, std::memory_order_relaxed);
+}
+void GhModuleRelease() noexcept {
+    g_objCount.fetch_sub(1, std::memory_order_relaxed);
+}
+void GhLockServerAddRef() noexcept {
+    g_lockCount.fetch_add(1, std::memory_order_relaxed);
+}
+void GhLockServerRelease() noexcept {
+    g_lockCount.fetch_sub(1, std::memory_order_relaxed);
+}
 
 extern "C" const CLSID CLSID_Greathelm;
 
@@ -30,19 +40,16 @@ extern "C" BOOL WINAPI DllMain(HINSTANCE h, DWORD r, LPVOID) {
 
 extern "C" DLL_EXPORT HRESULT WINAPI DllGetClassObject(REFCLSID rclsid, REFIID riid, void** ppv) {
     if (ppv) *ppv = nullptr;
-    if (rclsid != CLSID_Greathelm) return CLASS_E_CLASSNOTAVAILABLE;
-    
+    if (!IsEqualCLSID(rclsid, CLSID_Greathelm)) return CLASS_E_CLASSNOTAVAILABLE;
     ClassFactory* f = new(std::nothrow) ClassFactory();
     if (!f) return E_OUTOFMEMORY;
-
     HRESULT hr = f->QueryInterface(riid, ppv);
     f->Release();
     return hr;
 }
 
 extern "C" DLL_EXPORT HRESULT WINAPI DllCanUnloadNow(void) {
-    return (g_objCount.load(std::memory_order_relaxed) == 0 &&
-            g_lockCount.load(std::memory_order_relaxed) == 0) ? S_OK : S_FALSE;
+    return (g_objCount.load(std::memory_order_relaxed) == 0 && g_lockCount.load(std::memory_order_relaxed) == 0) ? S_OK : S_FALSE;
 }
 
 static HRESULT RegWriteStr(HKEY root, const wchar_t* subkey, const wchar_t* name, const wchar_t* value) {
@@ -51,6 +58,7 @@ static HRESULT RegWriteStr(HKEY root, const wchar_t* subkey, const wchar_t* name
     if (rc != ERROR_SUCCESS) return HRESULT_FROM_WIN32(rc);
     rc = RegSetValueExW(k, name, 0, REG_SZ, (const BYTE*)value, (DWORD)((wcslen(value)+1) * sizeof(wchar_t)));
     RegCloseKey(k);
+
     return HRESULT_FROM_WIN32(rc == ERROR_SUCCESS ? ERROR_SUCCESS : rc);
 }
 
@@ -86,14 +94,13 @@ extern "C" DLL_EXPORT HRESULT WINAPI DllRegisterServer(void) {
 
     hr = RegWriteStr(HKEY_LOCAL_MACHINE, keyProv2.c_str(), nullptr, L"Greathelm");
     if (FAILED(hr)) return hr;
-
     return S_OK;
 }
 
 extern "C" DLL_EXPORT HRESULT WINAPI DllUnregisterServer(void) {
     const std::wstring clsid = GuidToBracedString(CLSID_Greathelm);
-
     const wchar_t* AMSI_BASE = L"SOFTWARE\\Microsoft\\AMSI";
+
     const std::wstring keyProv  = std::wstring(AMSI_BASE) + L"\\Providers\\"  + clsid;
     const std::wstring keyProv2 = std::wstring(AMSI_BASE) + L"\\Providers2\\" + clsid;
 

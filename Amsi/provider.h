@@ -1,3 +1,4 @@
+// provider.h
 #pragma once
 #include <windows.h>
 #include <unknwn.h>
@@ -39,16 +40,14 @@ extern HMODULE g_hMod;
 extern const wchar_t* kProviderName;
 
 class Provider final : public IAntimalwareProvider {
-    std::atomic<long> refCount{1};
-public:
-    HRESULT STDMETHODCALLTYPE QueryInterface(REFIID, void**) override;
-    ULONG   STDMETHODCALLTYPE AddRef() override;
-    ULONG   STDMETHODCALLTYPE Release() override;
-
-    HRESULT STDMETHODCALLTYPE Scan(IAmsiStream*, AMSI_RESULT*) override;
-    void    STDMETHODCALLTYPE CloseSession(ULONGLONG) override;
-    HRESULT STDMETHODCALLTYPE DisplayName(LPWSTR*) override;
-
-    Provider();
-    virtual ~Provider();
+        std::atomic<long> refCount{1};
+    public:
+        HRESULT STDMETHODCALLTYPE QueryInterface(REFIID, void**) override;
+        ULONG   STDMETHODCALLTYPE AddRef() override;
+        ULONG   STDMETHODCALLTYPE Release() override;
+        HRESULT STDMETHODCALLTYPE Scan(IAmsiStream*, AMSI_RESULT*) override;
+        void    STDMETHODCALLTYPE CloseSession(ULONGLONG) override;
+        HRESULT STDMETHODCALLTYPE DisplayName(LPWSTR*) override;
+        Provider();
+        virtual ~Provider();
 };
