@@ -111,8 +111,11 @@ namespace MATCH {
 
                 if (!reason.empty()) {
                     verdict = 'D';
-                    self->getDefender()->escalate(UTIL::Pair<std::uint8_t, std::vector<std::string>>(0b010, {reason + " ; " + cmd }));
+                    try {
+                        self->getDefender()->escalate(UTIL::Pair<std::uint8_t, std::vector<std::string>>(0b010, {reason + " ; " + cmd }));
+                    } catch (...) { }
                 }
+
             }
 
         DWORD w = 0;

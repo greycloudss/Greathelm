@@ -40,6 +40,7 @@ static std::unordered_map<std::string, int> g_rules;
 
 bool Firewall::addBlock(const FlexAddress* ip) {
     if (!ip) return false;
+    UTIL::logSuspicion(std::wstring(L"FIREWALL addBlock called: ") + UTIL::to_wstring_utf8(ip->getIPstr()));
     std::wstring wip = UTIL::to_wstring_utf8(ip->getIPstr());
     std::wstring name = L"Greathelm_" + wip;
     {
@@ -61,6 +62,7 @@ bool Firewall::addBlock(const FlexAddress* ip) {
 bool Firewall::removeBlock(const FlexAddress* ip){
     if(!ip) return false;
     std::wstring wip = UTIL::to_wstring_utf8(ip->getIPstr());
+    UTIL::logSuspicion(std::wstring(L"FIREWALL removeBlock called: ") + UTIL::to_wstring_utf8(ip->getIPstr()));
     std::wstring name = L"Greathelm_" + wip;
     std::wstring delOut = L"netsh advfirewall firewall delete rule name=\"" + name + L"\" dir=out";
     std::wstring delIn  = L"netsh advfirewall firewall delete rule name=\"" + name + L"\" dir=in";
