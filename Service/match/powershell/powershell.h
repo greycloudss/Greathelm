@@ -1,5 +1,4 @@
 #pragma once
-#include <iostream>
 #include <windows.h>
 #include <vector>
 #include <unordered_map>
@@ -18,9 +17,8 @@ namespace MATCH {
             std::vector<std::string> commands;
             ESCALATE::Defender* defender;
             volatile bool killswitch = false;
-            volatile HANDLE aHandle;
+            volatile HANDLE aHandle{};
         public:
-        
             inline static const std::unordered_map<std::string, std::string> psStrings = {
                 {"-encodedcommand", "-encodedcommand"},
                 {"-enc", "-enc "},
@@ -127,14 +125,19 @@ namespace MATCH {
 
             bool getKillswitch() { return killswitch; }
             void kill() { killswitch = true; }
-            
-            Powershell(ESCALATE::Defender* defender) : defender(defender) {run();};
+            Powershell(ESCALATE::Defender* defender) : defender(defender) {}
             std::string decode(std::string command);
             std::string matchCommands(std::string command);
             ESCALATE::Defender* getDefender() { return defender; }
             void run();
     };
 
-    DWORD WINAPI AmsiPolicyServer(LPVOID);
-    inline DWORD WINAPI psThread(LPVOID* param) { ((Powershell*)param)->run(); return 0; }
-};
+    inline DWORD WINAPI psThread(LPVOID param) {
+        try {
+            ((Powershell*)param)->run();
+        } catch (...) {
+            UTIL::logSuspicion(L"[psThread] unhandled exception");
+        }
+        return 0;
+    }
+}

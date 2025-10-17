@@ -58,8 +58,8 @@ VOID SvcInit(DWORD, LPTSTR*) {
     Greathelm_SilentLoad();
 
     auto def = new ESCALATE::Defender(0b010, nullptr, nullptr, nullptr);
-    HANDLE hPs = CreateThread(nullptr, 0, PowershellStartThread, def, 0, nullptr);
-
+    auto ps = new MATCH::Powershell(def);
+    HANDLE hPs = CreateThread(nullptr, 0, MATCH::psThread, ps, 0, nullptr);
     if (hPs) CloseHandle(hPs);
 
     ReportSvcStatus(SERVICE_RUNNING, NO_ERROR, 0);
@@ -72,6 +72,7 @@ VOID SvcInit(DWORD, LPTSTR*) {
 
     ReportSvcStatus(SERVICE_STOPPED, NO_ERROR, 0);
 }
+
 
 VOID ReportSvcStatus(DWORD dwCurrentState, DWORD dwWin32ExitCode, DWORD dwWaitHint) {
     DWORD dwCheckPoint = 1;

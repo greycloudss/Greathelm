@@ -1,4 +1,3 @@
-// factory.cpp
 #include "factory.h"
 #include "provider.h"
 #include <new>

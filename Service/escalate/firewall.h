@@ -15,7 +15,6 @@
 #include <sdkddkver.h>
 #include <fwptypes.h>
 
-#include <memory>
 #include <winsock2.h>
 #include <ws2tcpip.h>
 #include <windows.h>
@@ -23,33 +22,25 @@
 #include <rpc.h>
 #include <wtsapi32.h>
 #include <regex>
-#include <strsafe.h>
 #include <string>
 
 #include "../utils/pair.h"
 #include "../utils/strings.h"
 #include "ip.h"
 
-
 #pragma comment(lib, "fwpuclnt.lib")
 #pragma comment(lib, "rpcrt4.lib")
 #pragma comment(lib, "ws2_32.lib")
 
-namespace ESCALATE { class Defender; }
-
 namespace ESCALATE {
     class Firewall {
-        public:
-            bool addBlock(const FlexAddress* ip);
-            bool removeBlock(const FlexAddress* ip);
-
-            FlexAddress* dnsResolve(std::wstring url);
-            bool isLimited(const FlexAddress* ip);
-
-            DWORD rateLimit(LPVOID param);
-
-            FlexAddress* parseURL(std::wstring url);
-            
-            bool escalate(const FlexAddress ip);
+    public:
+        bool addBlock(const FlexAddress* ip);
+        bool removeBlock(const FlexAddress* ip);
+        FlexAddress* dnsResolve(std::wstring url);
+        bool isLimited(const FlexAddress* ip);
+        DWORD rateLimit(LPVOID param);
+        FlexAddress* parseURL(std::wstring url);
+        bool escalate(const FlexAddress& ip);
     };
-};
+}

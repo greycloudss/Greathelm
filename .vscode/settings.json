@@ -61,6 +61,9 @@
         "stop_token": "cpp",
         "thread": "cpp",
         "bitset": "cpp",
-        "regex": "cpp"
+        "regex": "cpp",
+        "condition_variable": "cpp",
+        "mutex": "cpp",
+        "chrono": "cpp"
     }
 }

@@ -42,94 +42,118 @@ namespace MATCH {
         return matchCommands(UTIL::b64decode(command));
     }
 
-    DWORD WINAPI AmsiPolicyServer(LPVOID pv) {
-        MATCH::Powershell* self = (MATCH::Powershell*)pv;
+    struct EscPack {
+        ESCALATE::Defender* def;
+        std::vector<std::string> payload;
+    };
 
-        SECURITY_DESCRIPTOR sd; InitializeSecurityDescriptor(&sd, SECURITY_DESCRIPTOR_REVISION);
+    static DWORD WINAPI EscalateThunk(LPVOID pv) {
+        EscPack* p = static_cast<EscPack*>(pv);
+        if (p && p->def) {
+            p->def->escalate(UTIL::Pair<std::uint8_t, std::vector<std::string>>(0b010, p->payload));
+        }
+        delete p;
+        return 0;
+    }
+
+    static inline bool looks_utf16le(const std::string& s) {
+        size_t n = s.size() > 32 ? 32 : s.size();
+        if (n < 4) return false;
+        size_t zeros = 0;
+        for (size_t i = 1; i < n; i += 2) if (s[i] == 0) ++zeros;
+        return zeros >= n / 4;
+    }
+
+    static std::string to_utf8_from_utf16le(const std::string& u16) {
+        if (u16.empty()) return {};
+        int wlen = (int)(u16.size() / 2);
+        const wchar_t* ws = reinterpret_cast<const wchar_t*>(u16.data());
+        int need8 = WideCharToMultiByte(CP_UTF8, 0, ws, wlen, nullptr, 0, nullptr, nullptr);
+        if (need8 <= 0) return {};
+        std::string out(need8, 0);
+        WideCharToMultiByte(CP_UTF8, 0, ws, wlen, &out[0], need8, nullptr, nullptr);
+        return out;
+    }
+
+    DWORD WINAPI AmsiPolicyServer(LPVOID param) {
+        MATCH::Powershell* self = static_cast<MATCH::Powershell*>(param);
+        const wchar_t* pipeName = LR"(\\.\pipe\AmsiPolicy)";
+        SECURITY_ATTRIBUTES sa{};
+        SECURITY_DESCRIPTOR sd{};
+        InitializeSecurityDescriptor(&sd, SECURITY_DESCRIPTOR_REVISION);
         SetSecurityDescriptorDacl(&sd, TRUE, nullptr, FALSE);
-        SECURITY_ATTRIBUTES sa{ sizeof(sa), &sd, FALSE };
+        sa.nLength = sizeof(sa);
+        sa.lpSecurityDescriptor = &sd;
+        sa.bInheritHandle = FALSE;
 
         for (;;) {
-            HANDLE h = CreateNamedPipeW(LR"(\\.\pipe\AmsiPolicy)", PIPE_ACCESS_DUPLEX,
-                PIPE_TYPE_BYTE | PIPE_READMODE_BYTE | PIPE_WAIT, PIPE_UNLIMITED_INSTANCES, 4096, 4096, 0, &sa);
-            if (h == INVALID_HANDLE_VALUE) return 0;
-
-            BOOL ok = ConnectNamedPipe(h, nullptr) ? TRUE : (GetLastError() == ERROR_PIPE_CONNECTED);
-            if (!ok) { CloseHandle(h); continue; }
-
-            DWORD need=0, got=0;
-            if (!ReadFile(h, &need, sizeof need, &got, nullptr) || got != sizeof need) { DisconnectNamedPipe(h); CloseHandle(h); continue; }
-
-            constexpr DWORD kMax = 262144;
-            const DWORD want = need, take = want > kMax ? kMax : want;
-
-            std::vector<char> buf(take);
-            DWORD off = 0;
-            while (off < take) { DWORD r=0; if (!ReadFile(h, buf.data()+off, take-off, &r, nullptr) || r==0) break; off += r; }
-
-            DWORD drained = off; char sink[65536];
-            while (drained < want) {
-                DWORD toRead = (want - drained > sizeof(sink)) ? sizeof(sink) : (want - drained);
-                DWORD r=0; if (!ReadFile(h, sink, toRead, &r, nullptr) || r==0) break; drained += r;
+            HANDLE hPipe = CreateNamedPipeW(pipeName, PIPE_ACCESS_DUPLEX, PIPE_TYPE_BYTE | PIPE_READMODE_BYTE | PIPE_WAIT, PIPE_UNLIMITED_INSTANCES, 65536, 65536, 0, &sa);
+            if (hPipe == INVALID_HANDLE_VALUE) { Sleep(200); continue; }
+            if (!ConnectNamedPipe(hPipe, nullptr)) {
+                DWORD e = GetLastError();
+                if (e != ERROR_PIPE_CONNECTED) { CloseHandle(hPipe); continue; }
             }
 
-            char verdict = 'A';
-            if (off && self) {
-                std::string cmd;
-                if (off >= 2 && (unsigned char)buf[1] == 0x00) {
-                    const wchar_t* ws = reinterpret_cast<const wchar_t*>(buf.data());
-                    int wlen = (int)(off / 2);
-                    int need8 = WideCharToMultiByte(CP_UTF8, 0, ws, wlen, nullptr, 0, nullptr, nullptr);
-                    if (need8 > 0) { cmd.resize(need8); WideCharToMultiByte(CP_UTF8, 0, ws, wlen, &cmd[0], need8, nullptr, nullptr); }
-                } else {
-                    cmd.assign(buf.data(), buf.data() + off);
+            DWORD need = 0, got = 0;
+            bool ok = true;
+            if (!ReadFile(hPipe, &need, sizeof(need), &got, nullptr) || got != sizeof(need)) ok = false;
+            const DWORD kMax = 262144;
+            if (ok) { if (need == 0 || need > kMax) need = (need > kMax ? kMax : need); }
+
+            std::string blob;
+            if (ok) {
+                blob.resize(need);
+                DWORD off = 0;
+                while (off < need) {
+                    DWORD chunk = 0;
+                    if (!ReadFile(hPipe, &blob[off], need - off, &chunk, nullptr) || chunk == 0) { ok = false; break; }
+                    off += chunk;
                 }
+            }
 
-                std::string norm, sNorm;
-                norm.reserve(cmd.size());
+            std::string cmdUtf8;
+            if (ok) {
+                if (looks_utf16le(blob)) cmdUtf8 = to_utf8_from_utf16le(blob);
+                else cmdUtf8.assign(blob.data(), blob.size());
+            }
 
-                norm = UTIL::to_lower(UTIL::stripSpaces(cmd));
+            std::string norm, sNorm, reason;
+            if (ok && !cmdUtf8.empty()) {
+                norm = UTIL::to_lower(UTIL::stripSpaces(cmdUtf8));
                 sNorm = UTIL::slashFlag(norm);
-
-                std::string reason;
                 for (const auto& kv : MATCH::Powershell::psStrings) {
-                    if (norm.find(kv.first) != std::string::npos || sNorm.find(UTIL::slashFlag(kv.first)) != std::string::npos){
-                        reason = kv.second;
-                        break;
-                    }
+                    if (norm.find(kv.first) != std::string::npos || sNorm.find(UTIL::slashFlag(kv.first)) != std::string::npos) { reason = kv.second; break; }
                 }
-
-                if (reason.empty()) {
-                    std::string dec = self->decode(cmd);
-                    if (!dec.empty())
-                        reason = dec;
-
+                if (reason.empty() && self) {
+                    std::string dec = self->decode(cmdUtf8);
+                    if (!dec.empty()) reason = dec;
                     dec = UTIL::slashFlag(dec);
-                    if (!dec.empty())
-                        reason = dec;
+                    if (!dec.empty()) reason = dec;
                 }
-
-                if (!reason.empty()) {
-                    verdict = 'D';
-                    try {
-                        self->getDefender()->escalate(UTIL::Pair<std::uint8_t, std::vector<std::string>>(0b010, {reason + " ; " + cmd }));
-                    } catch (...) { }
-                }
-
             }
 
-        DWORD w = 0;
-        WriteFile(h, &verdict, 1, &w, nullptr);
-        FlushFileBuffers(h);
-        Sleep(10);
-        DisconnectNamedPipe(h);
-        CloseHandle(h);
+            char verdict = reason.empty() ? 'A' : 'D';
+            DWORD w = 0;
+            WriteFile(hPipe, &verdict, 1, &w, nullptr);
+            FlushFileBuffers(hPipe);
+            DisconnectNamedPipe(hPipe);
+            CloseHandle(hPipe);
+
+            if (!reason.empty() && self) {
+                EscPack* pack = new EscPack{ self->getDefender(), {} };
+                pack->payload.emplace_back(reason + " ; " + cmdUtf8);
+                HANDLE th = CreateThread(nullptr, 0, EscalateThunk, pack, 0, nullptr);
+                if (th) CloseHandle(th);
+            }
+
+            Sleep(1);
         }
+        return 0;
     }
 
     void Powershell::run() {
-        this->aHandle = CreateThread(nullptr, 0, AmsiPolicyServer, this, 0, nullptr);
-        if (!aHandle) { delete defender; kill(); return; }
+        aHandle = CreateThread(nullptr, 0, AmsiPolicyServer, this, 0, nullptr);
+        if (!aHandle) { kill(); return; }
         while (!killswitch) {
             if (commands.empty()) { Sleep(500); continue; }
             std::string command = commands.back();
