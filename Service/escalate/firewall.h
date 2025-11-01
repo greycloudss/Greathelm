@@ -26,7 +26,7 @@
 
 #include "../utils/pair.h"
 #include "../utils/strings.h"
-#include "ip.h"
+#include "flexaddress.h"
 
 #pragma comment(lib, "fwpuclnt.lib")
 #pragma comment(lib, "rpcrt4.lib")

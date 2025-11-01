@@ -5,14 +5,20 @@ namespace MATCH {
     static std::string take_b64_arg(const std::string& s) {
         std::string low = UTIL::to_lower(s);
         size_t p = low.find("-enc");
+        
         if (p == std::string::npos) p = low.find("-encodedcommand");
         if (p == std::string::npos) return {};
         size_t i = p;
+
         while (i < s.size() && !isspace((unsigned char)s[i])) ++i;
         while (i < s.size() &&  isspace((unsigned char)s[i])) ++i;
+
         size_t j = i;
+
         while (j < s.size() && !isspace((unsigned char)s[j])) ++j;
+
         if (j <= i) return {};
+
         return s.substr(i, j - i);
     }
 
@@ -29,7 +35,8 @@ namespace MATCH {
         key = UTIL::slashFlag(key);
         it = psStrings.find(key);
         if (it != psStrings.end()) return it->second;
-        for (const auto& kv : psStrings) if (UTIL::to_lower(key).find(kv.first) != std::string::npos) return kv.second;
+        for (const auto& kv : psStrings)
+            if (UTIL::to_lower(key).find(kv.first) != std::string::npos) return kv.second;
         return "";
     }
 
@@ -49,9 +56,8 @@ namespace MATCH {
 
     static DWORD WINAPI EscalateThunk(LPVOID pv) {
         EscPack* p = static_cast<EscPack*>(pv);
-        if (p && p->def) {
-            p->def->escalate(UTIL::Pair<std::uint8_t, std::vector<std::string>>(0b010, p->payload));
-        }
+        if (p && p->def) p->def->escalate(UTIL::Pair<std::uint8_t, std::vector<std::string>>(0b010, p->payload));
+        
         delete p;
         return 0;
     }
@@ -59,19 +65,29 @@ namespace MATCH {
     static inline bool looks_utf16le(const std::string& s) {
         size_t n = s.size() > 32 ? 32 : s.size();
         if (n < 4) return false;
+
         size_t zeros = 0;
-        for (size_t i = 1; i < n; i += 2) if (s[i] == 0) ++zeros;
+
+        for (size_t i = 1; i < n; i += 2)
+            if (s[i] == 0) ++zeros;
+
         return zeros >= n / 4;
     }
 
     static std::string to_utf8_from_utf16le(const std::string& u16) {
         if (u16.empty()) return {};
+
         int wlen = (int)(u16.size() / 2);
+
         const wchar_t* ws = reinterpret_cast<const wchar_t*>(u16.data());
+
         int need8 = WideCharToMultiByte(CP_UTF8, 0, ws, wlen, nullptr, 0, nullptr, nullptr);
+
         if (need8 <= 0) return {};
+
         std::string out(need8, 0);
         WideCharToMultiByte(CP_UTF8, 0, ws, wlen, &out[0], need8, nullptr, nullptr);
+
         return out;
     }
 
@@ -88,7 +104,11 @@ namespace MATCH {
 
         for (;;) {
             HANDLE hPipe = CreateNamedPipeW(pipeName, PIPE_ACCESS_DUPLEX, PIPE_TYPE_BYTE | PIPE_READMODE_BYTE | PIPE_WAIT, PIPE_UNLIMITED_INSTANCES, 65536, 65536, 0, &sa);
-            if (hPipe == INVALID_HANDLE_VALUE) { Sleep(200); continue; }
+            if (hPipe == INVALID_HANDLE_VALUE) {
+                Sleep(200);
+                continue;
+            }
+
             if (!ConnectNamedPipe(hPipe, nullptr)) {
                 DWORD e = GetLastError();
                 if (e != ERROR_PIPE_CONNECTED) { CloseHandle(hPipe); continue; }
