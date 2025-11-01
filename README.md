@@ -148,6 +148,6 @@ Each entry is timestamped and module-scoped, e.g.:
 This project is provided for **research and educational purposes**.
 No warranty is provided. Redistribution or deployment on production systems is at your own risk.
 
-© 2025 GreyCloudSS — All Rights Reserved.
+© 2025 greycloudss — All Rights Reserved.
 
 ---
