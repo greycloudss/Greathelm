@@ -64,6 +64,7 @@
         "regex": "cpp",
         "condition_variable": "cpp",
         "mutex": "cpp",
-        "chrono": "cpp"
+        "chrono": "cpp",
+        "cstring": "cpp"
     }
 }

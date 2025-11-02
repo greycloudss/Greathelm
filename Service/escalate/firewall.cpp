@@ -102,7 +102,11 @@ FlexAddress* Firewall::dnsResolve(std::wstring url) {
     hints.ai_family = AF_UNSPEC;
     hints.ai_socktype = SOCK_STREAM;
     addrinfoW* res = nullptr;
-    if (GetAddrInfoW(url.c_str(), nullptr, &hints, &res) != 0 || !res) { WSACleanup(); return nullptr; }
+    
+    if (GetAddrInfoW(url.c_str(), nullptr, &hints, &res) != 0 || !res) {
+        WSACleanup();
+        return nullptr;
+    }
 
     FlexAddress* out = nullptr;
     for (addrinfoW* ai = res; ai; ai = ai->ai_next) {
@@ -112,6 +116,7 @@ FlexAddress* Firewall::dnsResolve(std::wstring url) {
             out = new FlexAddress(IPver::v4, narrow_utf8(buf));
             break;
         }
+        
         if (ai->ai_family == AF_INET6) {
             wchar_t buf[INET6_ADDRSTRLEN] = {0};
             InetNtopW(AF_INET6, &reinterpret_cast<sockaddr_in6*>(ai->ai_addr)->sin6_addr, buf, INET6_ADDRSTRLEN);

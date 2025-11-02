@@ -128,13 +128,17 @@ HRESULT Provider::DisplayName(LPWSTR* name){
 void Provider::CloseSession(ULONGLONG) {}
 
 static std::string hex_head(const uint8_t* p, size_t n) {
-    char buf[64] = {0};
     size_t m = n < 16 ? n : 16;
+    std::string hex = hex_head(p, m);
+    std::string ascii;
+    ascii.reserve(m);
+
     for (size_t i = 0; i < m; ++i) {
-        unsigned int v = p[i];
-        snprintf(buf + i*2, sizeof(buf) - i*2, "%02X", v & 0xFF);
+        unsigned char c = p[i];
+        ascii.push_back(c >= 32 && c < 127 ? char(c) : '.');
     }
-    return std::string(buf);
+
+    return hex + " " + ascii;
 }
 
 HRESULT Provider::Scan(IAmsiStream* stream, AMSI_RESULT* result) {

@@ -120,7 +120,9 @@ namespace MATCH {
                 {"add-type-path", "Add-Type -Path"},
                 {"bypass", "Bypass"},
                 {"unrestricted", "Unrestricted"},
-                {"hiddenwindow", "HiddenWindow"}
+                {"hiddenwindow", "HiddenWindow"},
+                {"greathelm_Provider.dll","Greathelm_Provider.dll"}, // tracking ourselves
+                {"greathelm_service.exe","Greathelm_service.exe"}    // tracking ourselves
             };
 
             bool getKillswitch() { return killswitch; }

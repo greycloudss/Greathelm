@@ -144,6 +144,7 @@ bool Defender::escalatePS(std::vector<std::string> commands) {
             if (!tgt.empty()) {
                 std::vector<std::wstring> v;
                 v.push_back(std::move(tgt));
+
                 escalateFW(v);
             }
         } else {
@@ -177,7 +178,12 @@ bool Defender::escalateFW(const std::vector<std::wstring>& connections) {
                 try {
                     std::wstring ws(s.begin(), s.end());
                     FlexAddress* parsed = nullptr;
-                    try { parsed = fwall->parseURL(ws); } catch (...) { parsed = nullptr; }
+                    try {
+                        parsed = fwall->parseURL(ws);
+                    } catch (...) {
+                        parsed = nullptr;
+                    }
+
                     if (!parsed) {
                         UTIL::logSuspicion(L"[Firewall] parseURL failed for: " + UTIL::to_wstring_utf8(s));
                         continue;
@@ -193,25 +199,31 @@ bool Defender::escalateFW(const std::vector<std::wstring>& connections) {
         if (!add) continue;
 
         bool ok = false;
-        try { ok = fwall->escalate(*add); } catch (...) { UTIL::logSuspicion(L"[Firewall] escalate threw"); continue; }
+        try {
+            ok = fwall->escalate(*add);
+        } catch (...) {
+            UTIL::logSuspicion(L"[Firewall] escalate threw");
+            continue;
+        }
         return ok;
     }
     return false;
 }
 
-bool Defender::escalate(const UTIL::Pair<uint8_t, std::vector<std::string>>& threats) {
+void Defender::escalate(const UTIL::Pair<uint8_t, std::vector<std::string>>& threats) {
     if (threats.getA() == 0b010) {
         for (const auto& s : threats.getB()) UTIL::logSuspicion(L"[PowerShell] " + UTIL::to_wstring_utf8(s));
-        return escalatePS(threats.getB());
+        escalatePS(threats.getB());
     }
-    return false;
-}
-
-void Defender::run() {
-    while (true) Sleep(1000);
 }
 
 Defender::~Defender() {
-    if (powershell) { try { powershell->kill(); } catch (...) {} powershell = nullptr; }
+    if (powershell) {
+        try {
+            powershell->kill();
+        } catch (...) { } 
+        
+        powershell = nullptr;
+    }
     delete fwall;
 }

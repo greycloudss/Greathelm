@@ -4,6 +4,7 @@
 namespace MATCH {
     static std::string take_b64_arg(const std::string& s) {
         std::string low = UTIL::to_lower(s);
+        low = UTIL::stripSpaces(low);
         size_t p = low.find("-enc");
         
         if (p == std::string::npos) p = low.find("-encodedcommand");
@@ -31,10 +32,14 @@ namespace MATCH {
     std::string Powershell::matchCommands(std::string command) {
         std::string key = UTIL::stripSpaces(command);
         std::unordered_map<std::string, std::string>::const_iterator it = psStrings.find(key);
+
         if (it != psStrings.end()) return it->second;
+
         key = UTIL::slashFlag(key);
         it = psStrings.find(key);
+
         if (it != psStrings.end()) return it->second;
+
         for (const auto& kv : psStrings)
             if (UTIL::to_lower(key).find(kv.first) != std::string::npos) return kv.second;
         return "";
@@ -63,31 +68,28 @@ namespace MATCH {
     }
 
     static inline bool looks_utf16le(const std::string& s) {
-        size_t n = s.size() > 32 ? 32 : s.size();
-        if (n < 4) return false;
+        if (s.size() < 2) return false;
 
         size_t zeros = 0;
+        size_t pairs = s.size() / 2;
 
-        for (size_t i = 1; i < n; i += 2)
-            if (s[i] == 0) ++zeros;
+        for (size_t i = 0; i + 1 < s.size(); i += 2)
+            if (s[i+1] == '\0') ++zeros;
 
-        return zeros >= n / 4;
+        return (pairs > 0) && (zeros * 1.0 / pairs) > 0.8;
     }
 
     static std::string to_utf8_from_utf16le(const std::string& u16) {
-        if (u16.empty()) return {};
+        if (u16.size() % 2 != 0) throw std::runtime_error("odd-length utf16 buffer");
 
-        int wlen = (int)(u16.size() / 2);
+        int wchars = (int)u16.size() / 2;
+        std::wstring ws(wchars, L'\0');
+        memcpy(&ws[0], u16.data(), u16.size());
 
-        const wchar_t* ws = reinterpret_cast<const wchar_t*>(u16.data());
+        int needed = WideCharToMultiByte(CP_UTF8, 0, ws.c_str(), wchars, nullptr, 0, nullptr, nullptr);
+        std::string out(needed, '\0');
 
-        int need8 = WideCharToMultiByte(CP_UTF8, 0, ws, wlen, nullptr, 0, nullptr, nullptr);
-
-        if (need8 <= 0) return {};
-
-        std::string out(need8, 0);
-        WideCharToMultiByte(CP_UTF8, 0, ws, wlen, &out[0], need8, nullptr, nullptr);
-
+        WideCharToMultiByte(CP_UTF8, 0, ws.c_str(), wchars, &out[0], needed, nullptr, nullptr);
         return out;
     }
 
@@ -96,8 +98,10 @@ namespace MATCH {
         const wchar_t* pipeName = LR"(\\.\pipe\AmsiPolicy)";
         SECURITY_ATTRIBUTES sa{};
         SECURITY_DESCRIPTOR sd{};
+        
         InitializeSecurityDescriptor(&sd, SECURITY_DESCRIPTOR_REVISION);
         SetSecurityDescriptorDacl(&sd, TRUE, nullptr, FALSE);
+
         sa.nLength = sizeof(sa);
         sa.lpSecurityDescriptor = &sd;
         sa.bInheritHandle = FALSE;
@@ -111,14 +115,18 @@ namespace MATCH {
 
             if (!ConnectNamedPipe(hPipe, nullptr)) {
                 DWORD e = GetLastError();
-                if (e != ERROR_PIPE_CONNECTED) { CloseHandle(hPipe); continue; }
+                if (e != ERROR_PIPE_CONNECTED) {
+                    CloseHandle(hPipe);
+                    continue;
+                }
             }
 
             DWORD need = 0, got = 0;
             bool ok = true;
             if (!ReadFile(hPipe, &need, sizeof(need), &got, nullptr) || got != sizeof(need)) ok = false;
             const DWORD kMax = 262144;
-            if (ok) { if (need == 0 || need > kMax) need = (need > kMax ? kMax : need); }
+            if (ok && (need == 0 || need > kMax))
+                need = (need > kMax ? kMax : need);
 
             std::string blob;
             if (ok) {
@@ -126,7 +134,11 @@ namespace MATCH {
                 DWORD off = 0;
                 while (off < need) {
                     DWORD chunk = 0;
-                    if (!ReadFile(hPipe, &blob[off], need - off, &chunk, nullptr) || chunk == 0) { ok = false; break; }
+                    if (!ReadFile(hPipe, &blob[off], need - off, &chunk, nullptr) || chunk == 0) {
+                        ok = false;
+                        break;
+                    }
+
                     off += chunk;
                 }
             }
@@ -141,13 +153,20 @@ namespace MATCH {
             if (ok && !cmdUtf8.empty()) {
                 norm = UTIL::to_lower(UTIL::stripSpaces(cmdUtf8));
                 sNorm = UTIL::slashFlag(norm);
+
                 for (const auto& kv : MATCH::Powershell::psStrings) {
-                    if (norm.find(kv.first) != std::string::npos || sNorm.find(UTIL::slashFlag(kv.first)) != std::string::npos) { reason = kv.second; break; }
+                    if (norm.find(kv.first) != std::string::npos || sNorm.find(UTIL::slashFlag(kv.first)) != std::string::npos) {
+                        reason = kv.second;
+                        break;
+                    }
                 }
+
                 if (reason.empty() && self) {
                     std::string dec = self->decode(cmdUtf8);
                     if (!dec.empty()) reason = dec;
+
                     dec = UTIL::slashFlag(dec);
+
                     if (!dec.empty()) reason = dec;
                 }
             }
@@ -166,21 +185,31 @@ namespace MATCH {
                 if (th) CloseHandle(th);
             }
 
-            Sleep(1);
+            Sleep(100);
         }
         return 0;
     }
 
     void Powershell::run() {
         aHandle = CreateThread(nullptr, 0, AmsiPolicyServer, this, 0, nullptr);
-        if (!aHandle) { kill(); return; }
+
+        if (!aHandle) {
+            kill();
+            return;
+        }
+
         while (!killswitch) {
-            if (commands.empty()) { Sleep(500); continue; }
+            if (commands.empty()) {
+                Sleep(500);
+                continue;
+            }
+
             std::string command = commands.back();
             commands.pop_back();
             std::string m = matchCommands(command);
             if (m.empty()) m = decode(command);
             if (m.empty()) m = command;
+
             defender->escalate(UTIL::Pair<std::uint8_t, std::vector<std::string>>(0b010, std::vector<std::string>{m}));
         }
     }
