@@ -1,7 +1,11 @@
 add
-reg add "HKLM\SOFTWARE\Classes\CLSID\{5F3E9C28-3E4A-4A8A-9B0C-9C423E3AA711}\InprocServer32" /ve /t REG_SZ /d "E:\VU\winapi\Greathelm_Provider.dll" /f
-reg add "HKLM\SOFTWARE\Classes\CLSID\{5F3E9C28-3E4A-4A8A-9B0C-9C423E3AA711}\InprocServer32" /v ThreadingModel /t REG_SZ /d Both /f
-reg add "HKLM\SOFTWARE\Microsoft\AMSI\Providers\{5F3E9C28-3E4A-4A8A-9B0C-9C423E3AA711}" /ve /t REG_SZ /d Greathelm /f
+reg add "HKCR\CLSID\{5f3e9c28-3e4a-4a8a-9b0c-9c423e3aa711}" /ve /d "Greathelm AMSI Provider" /f
+reg add "HKCR\CLSID\{5f3e9c28-3e4a-4a8a-9b0c-9c423e3aa711}\InprocServer32" /ve /d "E:\VU\winapi\Greathelm_Provider.dll" /f
+reg add "HKCR\CLSID\{5f3e9c28-3e4a-4a8a-9b0c-9c423e3aa711}\InprocServer32" /v "ThreadingModel" /t REG_SZ /d "Both" /f
+
+reg add "HKLM\SOFTWARE\Microsoft\AMSI\Providers\{5f3e9c28-3e4a-4a8a-9b0c-9c423e3aa711}" /ve /d "Greathelm" /f
+reg add "HKLM\SOFTWARE\Microsoft\AMSI\Providers2\{5f3e9c28-3e4a-4a8a-9b0c-9c423e3aa711}" /ve /d "Greathelm" /f
+
 
 
 
