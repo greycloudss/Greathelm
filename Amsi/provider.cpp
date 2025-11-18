@@ -129,7 +129,18 @@ void Provider::CloseSession(ULONGLONG) {}
 
 static std::string hex_head(const uint8_t* p, size_t n) {
     size_t m = n < 16 ? n : 16;
-    std::string hex = hex_head(p, m);
+
+    static const char* hexdigits = "0123456789abcdef";
+
+    std::string hex;
+    hex.reserve(m * 2);
+
+    for (size_t i = 0; i < m; ++i) {
+        uint8_t b = p[i];
+        hex.push_back(hexdigits[b >> 4]);
+        hex.push_back(hexdigits[b & 0x0F]);
+    }
+
     std::string ascii;
     ascii.reserve(m);
 
