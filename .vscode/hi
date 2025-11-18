@@ -1,0 +1,11 @@
+add
+reg add "HKLM\SOFTWARE\Classes\CLSID\{5F3E9C28-3E4A-4A8A-9B0C-9C423E3AA711}\InprocServer32" /ve /t REG_SZ /d "E:\VU\winapi\Greathelm_Provider.dll" /f
+reg add "HKLM\SOFTWARE\Classes\CLSID\{5F3E9C28-3E4A-4A8A-9B0C-9C423E3AA711}\InprocServer32" /v ThreadingModel /t REG_SZ /d Both /f
+reg add "HKLM\SOFTWARE\Microsoft\AMSI\Providers\{5F3E9C28-3E4A-4A8A-9B0C-9C423E3AA711}" /ve /t REG_SZ /d Greathelm /f
+
+
+
+del
+reg delete "HKLM\SOFTWARE\Microsoft\AMSI\Providers\{5F3E9C28-3E4A-4A8A-9B0C-9C423E3AA711}" /f
+reg delete "HKLM\SOFTWARE\Classes\CLSID\{5F3E9C28-3E4A-4A8A-9B0C-9C423E3AA711}" /f
+reg delete "HKLM\SOFTWARE\WOW6432Node\Classes\CLSID\{5F3E9C28-3E4A-4A8A-9B0C-9C423E3AA711}" /f

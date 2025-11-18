@@ -66,5 +66,8 @@
         "mutex": "cpp",
         "chrono": "cpp",
         "cstring": "cpp"
-    }
+    },
+
+    "C_Cpp.codeAnalysis.enabled": false,
+    "C_Cpp.codeAnalysis.clangTidy.enabled": false
 }
