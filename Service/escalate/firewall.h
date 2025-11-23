@@ -24,15 +24,15 @@
 #include <regex>
 #include <string>
 
-#include "../utils/pair.h"
-#include "../utils/strings.h"
+#include "../util/pair.h"
+#include "../util/strings.h"
 #include "flexaddress.h"
 
 #pragma comment(lib, "fwpuclnt.lib")
 #pragma comment(lib, "rpcrt4.lib")
 #pragma comment(lib, "ws2_32.lib")
 
-namespace ESCALATE {
+namespace ESC {
     class Firewall {
     public:
         bool addBlock(const FlexAddress* ip);

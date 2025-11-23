@@ -6,7 +6,7 @@
 #include <winsock2.h>
 #include <ws2tcpip.h>
 
-namespace ESCALATE {
+namespace ESC {
     enum class IPver : uint8_t { v4, v6 };
 
     class FlexAddress {

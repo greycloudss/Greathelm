@@ -1,5 +1,8 @@
 #include "main.h"
 #include <unknwn.h>
+#include <shellapi.h>
+#include <wtsapi32.h>
+#include <string>
 
 SERVICE_STATUS gSvcStatus = {};
 SERVICE_STATUS_HANDLE gSvcStatusHandle = nullptr;
@@ -17,13 +20,91 @@ static bool Greathelm_SilentLoad() {
     return ok;
 }
 
-DWORD WINAPI PowershellStartThread(LPVOID p) {
-    auto def = static_cast<ESCALATE::Defender*>(p);
-    new MATCH::Powershell(def);
+static bool IsUiMode() {
+    int argc = 0;
+    LPWSTR* argv = CommandLineToArgvW(GetCommandLineW(), &argc);
+    bool uiMode = false;
+    if (argv) {
+        for (int i = 0; i < argc; ++i) {
+            if (lstrcmpiW(argv[i], L"--ui") == 0) {
+                uiMode = true;
+                break;
+            }
+        }
+        LocalFree(argv);
+    }
+    return uiMode;
+}
+
+static int RunMenuUi() {
+    Menu menu;
+    menu.run();
     return 0;
 }
 
+static bool LaunchMenuInUserSession() {
+    DWORD sessionId = WTSGetActiveConsoleSessionId();
+    if (sessionId == 0xFFFFFFFF) return false;
+
+    HANDLE userToken = nullptr;
+    if (!WTSQueryUserToken(sessionId, &userToken)) return false;
+
+    HANDLE primaryToken = nullptr;
+    bool duplicated = DuplicateTokenEx(
+        userToken,
+        TOKEN_ASSIGN_PRIMARY | TOKEN_DUPLICATE | TOKEN_QUERY | TOKEN_ADJUST_DEFAULT | TOKEN_ADJUST_SESSIONID,
+        nullptr,
+        SecurityImpersonation,
+        TokenPrimary,
+        &primaryToken);
+
+    if (!duplicated) {
+        CloseHandle(userToken);
+        return false;
+    }
+
+    wchar_t exePath[MAX_PATH] = {};
+    if (!GetModuleFileNameW(nullptr, exePath, MAX_PATH)) {
+        CloseHandle(primaryToken);
+        CloseHandle(userToken);
+        return false;
+    }
+
+    std::wstring cmdLine = L"\"";
+    cmdLine += exePath;
+    cmdLine += L"\" --ui";
+
+    STARTUPINFOW si{};
+    si.cb = sizeof(si);
+    si.lpDesktop = const_cast<LPWSTR>(L"Winsta0\\Default");
+    PROCESS_INFORMATION pi{};
+
+    BOOL created = CreateProcessAsUserW(
+        primaryToken,
+        nullptr,
+        cmdLine.data(),
+        nullptr,
+        nullptr,
+        FALSE,
+        CREATE_NEW_PROCESS_GROUP,
+        nullptr,
+        nullptr,
+        &si,
+        &pi);
+
+    if (created) {
+        CloseHandle(pi.hThread);
+        CloseHandle(pi.hProcess);
+    }
+
+    CloseHandle(primaryToken);
+    CloseHandle(userToken);
+    return created == TRUE;
+}
+
 int WINAPI WinMain(HINSTANCE, HINSTANCE, LPSTR, int) {
+    if (IsUiMode()) return RunMenuUi();
+
     const SERVICE_TABLE_ENTRYW ste[] = {
         { const_cast<LPWSTR>(SVCNAME), SvcMain },
         { nullptr, nullptr }
@@ -57,10 +138,7 @@ VOID SvcInit(DWORD, LPTSTR*) {
 
     Greathelm_SilentLoad();
 
-    auto def = new ESCALATE::Defender(0b010, nullptr, nullptr, nullptr);
-    auto ps = new MATCH::Powershell(def);
-    HANDLE hPs = CreateThread(nullptr, 0, MATCH::psThread, ps, 0, nullptr);
-    if (hPs) CloseHandle(hPs);
+    LaunchMenuInUserSession();
 
     ReportSvcStatus(SERVICE_RUNNING, NO_ERROR, 0);
     WaitForSingleObject(ghSvcStopEvent, INFINITE);

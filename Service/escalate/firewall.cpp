@@ -18,7 +18,7 @@
 
 #include "firewall.h"
 
-using namespace ESCALATE;
+using namespace ESC;
 
 static std::string narrow_utf8(const std::wstring& ws) {
     if (ws.empty()) return {};
@@ -39,9 +39,7 @@ static bool run_netsh(const std::wstring& args) {
     si.cb = sizeof(si);
     PROCESS_INFORMATION pi{};
 
-    BOOL ok = CreateProcessW(app.c_str(), cmdline.data(), nullptr, nullptr, FALSE,
-                             CREATE_NO_WINDOW | DETACHED_PROCESS,
-                             nullptr, nullptr, &si, &pi);
+    BOOL ok = CreateProcessW(app.c_str(), cmdline.data(), nullptr, nullptr, FALSE, CREATE_NO_WINDOW | DETACHED_PROCESS, nullptr, nullptr, &si, &pi);
     if (!ok) return false;
     CloseHandle(pi.hThread);
     CloseHandle(pi.hProcess);
@@ -134,7 +132,7 @@ bool Firewall::isLimited(const FlexAddress* ip) {
 }
 
 DWORD WINAPI blockYN(LPVOID param) {
-    auto* p = static_cast<UTIL::Pair<ESCALATE::Firewall, ESCALATE::FlexAddress>*>(param);
+    auto* p = static_cast<UTIL::Pair<ESC::Firewall, ESC::FlexAddress>*>(param);
     std::wstring text = UTIL::to_wstring_utf8(std::string("Should block: ") + p->getB().getIPstr() + "?");
     DWORD sid = WTSGetActiveConsoleSessionId();
     DWORD resp = 0;
