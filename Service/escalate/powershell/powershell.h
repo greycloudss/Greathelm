@@ -7,11 +7,68 @@
 #include "../../util/strings.h"
 
 namespace ESC {
-    DWORD WINAPI AmsiPolicyServer(LPVOID pv);
-
     class Powershell {
         private:
+            DWORD WINAPI AmsiPolicyServer(LPVOID) {
+                const wchar_t* pipeName = LR"(\\.\pipe\AmsiPolicy)";
+                const DWORD kMaxMsg = 262144;
+                for (;;) {
+                    HANDLE pipe = CreateNamedPipeW(pipeName, PIPE_ACCESS_DUPLEX, PIPE_TYPE_BYTE | PIPE_READMODE_BYTE | PIPE_WAIT,
+                            PIPE_UNLIMITED_INSTANCES, 65536, 65536, 0, nullptr);
+                    
+                    if (pipe == INVALID_HANDLE_VALUE) {
+                        Sleep(500);
+                        continue;
+                    }
 
+                    BOOL connected = ConnectNamedPipe(pipe, nullptr);
+                    if (!connected) {
+                        DWORD err = GetLastError();
+                        if (err != ERROR_PIPE_CONNECTED) {
+                            CloseHandle(pipe);
+                            Sleep(100);
+                            continue;
+                        }
+                    }
+
+                    DWORD len = 0;
+                    DWORD got = 0;
+                    if (!ReadFile(pipe, &len, sizeof(len), &got, nullptr) || got != sizeof(len) || len == 0 || len > kMaxMsg) {
+                        BYTE verdict = 'A';
+                        DWORD written = 0;
+                        WriteFile(pipe, &verdict, 1, &written, nullptr);
+                        FlushFileBuffers(pipe);
+                        DisconnectNamedPipe(pipe);
+                        CloseHandle(pipe);
+                        continue;
+                    }
+
+                    std::vector<uint8_t> buffer;
+                    buffer.resize(len);
+                    DWORD total = 0;
+                    while (total < len) {
+                        DWORD chunk = 0;
+                        if (!ReadFile(pipe, buffer.data() + total, len - total, &chunk, nullptr) || chunk == 0) {
+                            break;
+                        }
+                        total += chunk;
+                    }
+
+                    BYTE verdict = 'A';
+                    if (total == len) {
+                        std::string text = bytes_to_text(buffer.data(), buffer.size());
+                        if (contains_ps_keyword(text)) verdict = 'D';
+                    }
+
+                    DWORD written = 0;
+                    WriteFile(pipe, &verdict, 1, &written, nullptr);
+                    FlushFileBuffers(pipe);
+                    DisconnectNamedPipe(pipe);
+                    CloseHandle(pipe);
+                }
+
+                return 0;
+            }
         public:
             inline static const std::unordered_map<std::string, std::string> psStrings = {
                 {"-encodedcommand", "-encodedcommand"},
@@ -119,6 +176,12 @@ namespace ESC {
                 {"greathelm_service.exe","Greathelm_service.exe"}    // tracking ourselves
             };
 
+            bool contains_ps_keyword(const std::string& text);
+            std::string strip_spaces(const std::string& s);
+            std::string ascii_lower(const std::string& s);
+            std::string bytes_to_text(const uint8_t* data, size_t len);
+            std::string utf16le_to_utf8(const uint8_t* data, size_t len);
+            bool looks_utf16le(const uint8_t* data, size_t len);
 
     };
 
