@@ -59,10 +59,24 @@ static bool policy_allow(const uint8_t* data, size_t len) {
     const DWORD kWaitMs = 2000;
     DWORD toSend = (DWORD)(len > kMaxMsg ? kMaxMsg : len);
 
-    if (!WaitNamedPipeW(LR"(\\.\pipe\AmsiPolicy)", kWaitMs)) return true;
+    if (!WaitNamedPipeW(LR"(\\.\pipe\AmsiPolicy)", kWaitMs)) {
+        static int logCount = 0;
+        if (logCount < 5 || (logCount % 10) == 0) {
+            gh_logw(L"policy_allow: WaitNamedPipe failed err=" + to_wstring_utf8(std::to_string(GetLastError())));
+        }
+        ++logCount;
+        return true;
+    }
 
     HANDLE h = CreateFileW(LR"(\\.\pipe\AmsiPolicy)", GENERIC_READ | GENERIC_WRITE, 0, nullptr, OPEN_EXISTING, 0, nullptr);
-    if (h == INVALID_HANDLE_VALUE) return true;
+    if (h == INVALID_HANDLE_VALUE) {
+        static int logCount = 0;
+        if (logCount < 5 || (logCount % 10) == 0) {
+            gh_logw(L"policy_allow: CreateFile pipe failed err=" + to_wstring_utf8(std::to_string(GetLastError())));
+        }
+        ++logCount;
+        return true;
+    }
 
     DWORD w = 0;
     if (!WriteFile(h, &toSend, sizeof(toSend), &w, nullptr) || w != sizeof(toSend)) {

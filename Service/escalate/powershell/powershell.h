@@ -19,6 +19,7 @@ namespace ESC {
             DWORD AmsiPolicyServer();
             static DWORD WINAPI ThreadProc(LPVOID ctx);
         public:
+            void notifyTargets(const std::vector<std::string>& targets);
             inline static const std::unordered_map<std::string, std::string> psStrings = {
                 {"-encodedcommand", "-encodedcommand"},
                 {"-enc", "-enc "},
