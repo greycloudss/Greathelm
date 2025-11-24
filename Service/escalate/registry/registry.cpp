@@ -26,6 +26,11 @@ namespace ESC {
         props->LogFileMode = EVENT_TRACE_REAL_TIME_MODE;
         props->LoggerNameOffset = sizeof(EVENT_TRACE_PROPERTIES);
         ULONG status = StartTraceW(&sessionHandle, sessionName.c_str(), props);
+        if (status == ERROR_ALREADY_EXISTS) {
+            UTIL::logSuspicion(L"[Registry] existing session detected, stopping prior instance");
+            StopTraceW(0, sessionName.c_str(), props);
+            status = StartTraceW(&sessionHandle, sessionName.c_str(), props);
+        }
         if (status != ERROR_SUCCESS) {
             UTIL::logSuspicion(L"[Registry] StartTraceW failed err=" + UTIL::to_wstring_utf8(std::to_string(status)));
             HeapFree(GetProcessHeap(), 0, props);
