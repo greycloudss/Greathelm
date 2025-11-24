@@ -6,6 +6,8 @@
 #include <string>
 #include <vector>
 #include <cstdint>
+#include <memory>
+#include <utility>
 
 namespace ESC {
     Powershell::Powershell() : threadHandle(nullptr), stopEvent(nullptr), running(false) {}
@@ -168,6 +170,28 @@ namespace ESC {
         return out;
     }
 
+    std::vector<std::string> Powershell::findRegistryPaths(const std::string& text) {
+        std::vector<std::string> out;
+        if (text.empty()) return out;
+
+        try {
+            static const std::regex regpath(
+                R"((HKEY_LOCAL_MACHINE|HKEY_CURRENT_USER|HKEY_CLASSES_ROOT|HKEY_USERS|HKLM|HKCU|HKCR|HKU)[:\\][^\s'"]+)",
+                std::regex::icase);
+
+            for (std::sregex_iterator it(text.begin(), text.end(), regpath), end; it != end; ++it) {
+                std::string v = it->str();
+                if (!v.empty()) out.push_back(v);
+            }
+
+            std::sort(out.begin(), out.end());
+            out.erase(std::unique(out.begin(), out.end()), out.end());
+        } catch (...) {
+        }
+
+        return out;
+    }
+
     DWORD Powershell::AmsiPolicyServer() {
         const wchar_t* pipeName = LR"(\\.\pipe\AmsiPolicy)";
         const DWORD kMaxMsg = 262144;
@@ -228,7 +252,12 @@ namespace ESC {
                 if (!targets.empty() && targetCallback) {
                     try { targetCallback(targets); } catch (...) {}
                 }
-                if (contains_ps_keyword(text)) verdict = 'D';
+                std::vector<std::string> regpaths = Powershell::findRegistryPaths(text);
+                for (const auto& rp : regpaths) {
+                    UTIL::logSuspicion(L"[PowerShell] registry path detected: " + UTIL::to_wstring_utf8(rp));
+                }
+                // Keep verdict allow to avoid terminating PowerShell; detection is logged and blocked via callback.
+                verdict = 'A';
             }
 
             DWORD written = 0;

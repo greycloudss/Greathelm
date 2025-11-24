@@ -3,6 +3,7 @@
 #include <evntrace.h>
 #include <tdh.h>
 #include <string>
+#include <vector>
 #include "../../util/strings.h"
 
 #pragma comment(lib, "advapi32.lib");
@@ -46,7 +47,25 @@ namespace ESC {
                     HeapFree(GetProcessHeap(), 0, info);
                     return;
                 }
-                std::wstring msg = L"[Registry] event id=" + std::to_wstring(ev->EventHeader.EventDescriptor.Id);
+                auto readStringProp = [&](PCWSTR name)->std::wstring {
+                    PROPERTY_DATA_DESCRIPTOR desc{};
+                    desc.PropertyName = (ULONGLONG)name;
+                    desc.ArrayIndex = ULONG_MAX;
+                    ULONG needed = 0;
+                    if (TdhGetPropertySize(ev, 0, nullptr, 1, &desc, &needed) != ERROR_SUCCESS || needed == 0) return L"";
+                    std::vector<BYTE> buf(needed);
+                    if (TdhGetProperty(ev, 0, nullptr, 1, &desc, needed, buf.data()) != ERROR_SUCCESS) return L"";
+                    return std::wstring(reinterpret_cast<wchar_t*>(buf.data()));
+                };
+
+                std::wstring key   = readStringProp(L"KeyName");
+                std::wstring value = readStringProp(L"ValueName");
+                if (key.empty() && value.empty()) {
+                    HeapFree(GetProcessHeap(), 0, info);
+                    return;
+                }
+                std::wstring msg = L"[Registry] event id=" + std::to_wstring(ev->EventHeader.EventDescriptor.Id) +
+                                   L" key=" + key + L" value=" + value;
                 UTIL::logSuspicion(msg);
 
                 HeapFree(GetProcessHeap(), 0, info);
@@ -70,7 +89,7 @@ namespace ESC {
                 ZeroMemory(&p, sizeof(p));
                 p.Version = ENABLE_TRACE_PARAMETERS_VERSION;
 
-                GUID RegistryProviderGuid = { 0xAE53722E, 0xC863, 0x11d2, {0x86,0x6F,0x00,0xC0,0x4F,0xB9,0x98,0xA2} };
+                GUID RegistryProviderGuid = {0x70eb4f03,0xc1de,0x4f73,{0xa0,0x51,0x33,0xd1,0x3d,0x54,0x13,0xbd}};
 
                 EnableTraceEx2( sessionHandle, &RegistryProviderGuid, EVENT_CONTROL_CODE_DISABLE_PROVIDER, 0, 0, 0, 0, &p);
             }

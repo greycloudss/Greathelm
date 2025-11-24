@@ -132,6 +132,7 @@ namespace ESC {
             void setTargetCallback(const std::function<void(const std::vector<std::string>&)>& cb);
 
             static std::vector<std::string> findTargets(const std::string& text);
+            static std::vector<std::string> findRegistryPaths(const std::string& text);
             bool contains_ps_keyword(const std::string& text);
             std::string strip_spaces(const std::string& s);
             std::string ascii_lower(const std::string& s);

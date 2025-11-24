@@ -42,7 +42,8 @@ namespace ESC {
         ZeroMemory(&enableParams, sizeof(enableParams));
         enableParams.Version = ENABLE_TRACE_PARAMETERS_VERSION;
 
-        GUID RegistryProviderGuid = {0x5f3e9c28,0x3e4a,0x4a8a,{0x9b,0x0c,0x9c,0x42,0x3e,0x3a,0xa7,0x11} };
+        // Microsoft-Windows-Kernel-Registry provider
+        GUID RegistryProviderGuid = {0x70eb4f03,0xc1de,0x4f73,{0xa0,0x51,0x33,0xd1,0x3d,0x54,0x13,0xbd}};
 
         status = EnableTraceEx2(sessionHandle, &RegistryProviderGuid, EVENT_CONTROL_CODE_ENABLE_PROVIDER, TRACE_LEVEL_VERBOSE, 0xFFFFFFFFFFFFFFFF, 0, 0, &enableParams);
         if (status != ERROR_SUCCESS) {

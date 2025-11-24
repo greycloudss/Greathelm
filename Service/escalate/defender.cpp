@@ -1,5 +1,6 @@
 #include "defender.h"
 #include <ws2tcpip.h>
+#include <cstring>
 #include "../util/strings.h"
 
 namespace ESC {
@@ -54,8 +55,11 @@ namespace ESC {
             IN_ADDR v4{};
             IN6_ADDR v6{};
             if (InetPtonA(AF_INET, t.c_str(), &v4) == 1) {
+                if (v4.S_un.S_addr == htonl(INADDR_LOOPBACK)) continue;
                 addr = new FlexAddress(IPver::v4, t);
             } else if (InetPtonA(AF_INET6, t.c_str(), &v6) == 1) {
+                static const IN6_ADDR loop6 = IN6ADDR_LOOPBACK_INIT;
+                if (memcmp(&v6, &loop6, sizeof(IN6_ADDR)) == 0) continue;
                 addr = new FlexAddress(IPver::v6, t);
             } else {
                 std::wstring w = UTIL::to_wstring_utf8(t);
