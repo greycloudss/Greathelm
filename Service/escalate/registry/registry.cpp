@@ -1,4 +1,5 @@
 #include "registry.h"
+#include "../../util/strings.h"
 
 namespace ESC {
     Registry::Registry() {
@@ -15,7 +16,10 @@ namespace ESC {
 
         ULONG bufferSize  = sizeof(EVENT_TRACE_PROPERTIES) + sizeof(wchar_t) * 256;
         props = (EVENT_TRACE_PROPERTIES*)HeapAlloc(GetProcessHeap(), HEAP_ZERO_MEMORY, bufferSize);
-        if (!props) return false;
+        if (!props) {
+            UTIL::logSuspicion(L"[Registry] failed to allocate trace properties");
+            return false;
+        }
 
         props->Wnode.BufferSize = bufferSize;
         props->Wnode.Flags = WNODE_FLAG_TRACED_GUID;
@@ -23,6 +27,7 @@ namespace ESC {
         props->LoggerNameOffset = sizeof(EVENT_TRACE_PROPERTIES);
         ULONG status = StartTraceW(&sessionHandle, sessionName.c_str(), props);
         if (status != ERROR_SUCCESS) {
+            UTIL::logSuspicion(L"[Registry] StartTraceW failed err=" + UTIL::to_wstring_utf8(std::to_string(status)));
             HeapFree(GetProcessHeap(), 0, props);
             props = nullptr;
             return false;
@@ -36,6 +41,7 @@ namespace ESC {
 
         status = EnableTraceEx2(sessionHandle, &RegistryProviderGuid, EVENT_CONTROL_CODE_ENABLE_PROVIDER, TRACE_LEVEL_VERBOSE, 0xFFFFFFFFFFFFFFFF, 0, 0, &enableParams);
         if (status != ERROR_SUCCESS) {
+            UTIL::logSuspicion(L"[Registry] EnableTraceEx2 failed err=" + UTIL::to_wstring_utf8(std::to_string(status)));
             StopTraceW(sessionHandle, sessionName.c_str(), props);
             HeapFree(GetProcessHeap(), 0, props);
             props = nullptr;
@@ -46,9 +52,11 @@ namespace ESC {
         traceLog.LoggerName = (LPWSTR)((BYTE*)props + props->LoggerNameOffset);
         traceLog.ProcessTraceMode = PROCESS_TRACE_MODE_REAL_TIME | PROCESS_TRACE_MODE_EVENT_RECORD;
         traceLog.EventRecordCallback = &Registry::StaticEventRecordCallback;
+        traceLog.Context = this;
         traceHandle = OpenTraceW(&traceLog);
 
         if (traceHandle == INVALID_PROCESSTRACE_HANDLE) {
+            UTIL::logSuspicion(L"[Registry] OpenTraceW failed");
             EnableTraceEx2(sessionHandle, &RegistryProviderGuid, EVENT_CONTROL_CODE_DISABLE_PROVIDER, TRACE_LEVEL_VERBOSE, 0, 0, 0, nullptr);
             StopTraceW(sessionHandle, sessionName.c_str(), props);
             HeapFree(GetProcessHeap(), 0, props);
@@ -59,6 +67,7 @@ namespace ESC {
 
         workerThread = CreateThread(nullptr, 0, ThreadProc, this, 0, nullptr);
         if (!workerThread) {
+            UTIL::logSuspicion(L"[Registry] CreateThread failed");
             CloseTrace(traceHandle);
             traceHandle = 0;
             EnableTraceEx2(sessionHandle, &RegistryProviderGuid, EVENT_CONTROL_CODE_DISABLE_PROVIDER, TRACE_LEVEL_VERBOSE, 0, 0, 0, nullptr);
@@ -69,6 +78,7 @@ namespace ESC {
             return false;
         }
 
+        UTIL::logSuspicion(L"[Registry] ETW monitoring started");
         return true;
     }
 
@@ -97,6 +107,9 @@ namespace ESC {
             HeapFree(GetProcessHeap(), 0, props);
             props = nullptr;
         }
+
+        UTIL::logSuspicion(L"[Registry] ETW monitoring stopped");
+        return true;
     }
 
     void  Registry::readKey(const wchar_t* path, const wchar_t* key) {
@@ -104,6 +117,6 @@ namespace ESC {
     }
 
     Registry::~Registry() {
-        
+        stop();
     }
 };

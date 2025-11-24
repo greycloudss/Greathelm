@@ -3,6 +3,7 @@
 #include <evntrace.h>
 #include <tdh.h>
 #include <string>
+#include "../../util/strings.h"
 
 #pragma comment(lib, "advapi32.lib");
 #pragma comment(lib, "tdh.lib");
@@ -45,6 +46,8 @@ namespace ESC {
                     HeapFree(GetProcessHeap(), 0, info);
                     return;
                 }
+                std::wstring msg = L"[Registry] event id=" + std::to_wstring(ev->EventHeader.EventDescriptor.Id);
+                UTIL::logSuspicion(msg);
 
                 HeapFree(GetProcessHeap(), 0, info);
             }

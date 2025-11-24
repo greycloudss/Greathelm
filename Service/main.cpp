@@ -3,10 +3,12 @@
 #include <shellapi.h>
 #include <wtsapi32.h>
 #include <string>
+#include <new>
 
 SERVICE_STATUS gSvcStatus = {};
 SERVICE_STATUS_HANDLE gSvcStatusHandle = nullptr;
 HANDLE ghSvcStopEvent = nullptr;
+static ESC::Defender* gDefender = nullptr;
 
 static const CLSID CLSID_MyProvider = {0x5f3e9c28,0x3e4a,0x4a8a,{0x9b,0x0c,0x9c,0x42,0x3e,0x3a,0xa7,0x11}};
 
@@ -79,18 +81,7 @@ static bool LaunchMenuInUserSession() {
     si.lpDesktop = const_cast<LPWSTR>(L"Winsta0\\Default");
     PROCESS_INFORMATION pi{};
 
-    BOOL created = CreateProcessAsUserW(
-        primaryToken,
-        nullptr,
-        cmdLine.data(),
-        nullptr,
-        nullptr,
-        FALSE,
-        CREATE_NEW_PROCESS_GROUP,
-        nullptr,
-        nullptr,
-        &si,
-        &pi);
+    BOOL created = CreateProcessAsUserW(primaryToken, nullptr, cmdLine.data(), nullptr, nullptr, FALSE, CREATE_NEW_PROCESS_GROUP, nullptr, nullptr, &si, &pi);
 
     if (created) {
         CloseHandle(pi.hThread);
@@ -138,6 +129,9 @@ VOID SvcInit(DWORD, LPTSTR*) {
 
     Greathelm_SilentLoad();
 
+    gDefender = new (std::nothrow) ESC::Defender();
+    if (gDefender) gDefender->run();
+
     LaunchMenuInUserSession();
 
     ReportSvcStatus(SERVICE_RUNNING, NO_ERROR, 0);
@@ -146,6 +140,11 @@ VOID SvcInit(DWORD, LPTSTR*) {
     if (ghSvcStopEvent) {
         CloseHandle(ghSvcStopEvent);
         ghSvcStopEvent = nullptr;
+    }
+
+    if (gDefender) {
+        delete gDefender;
+        gDefender = nullptr;
     }
 
     ReportSvcStatus(SERVICE_STOPPED, NO_ERROR, 0);
