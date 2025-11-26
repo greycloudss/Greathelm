@@ -10,78 +10,6 @@
 #include <utility>
 
 namespace ESC {
-    namespace {
-        struct AnalysisCtx {
-            Powershell* self;
-            std::vector<uint8_t> data;
-        };
-
-        DWORD WINAPI AnalyzePayloadAsync(LPVOID param) {
-            std::unique_ptr<AnalysisCtx> ctx(static_cast<AnalysisCtx*>(param));
-            if (!ctx || !ctx->self) return 0;
-
-            try {
-                std::string text = ctx->self->bytes_to_text(ctx->data.data(), ctx->data.size());
-                std::vector<std::string> targets = Powershell::findTargets(text);
-                const bool hasTargets = !targets.empty();
-                const bool hasKeywords = ctx->self->contains_ps_keyword(text);
-                const size_t previewLen = 160;
-                std::string preview = text.substr(0, previewLen);
-                if (text.size() > previewLen) preview += "...";
-
-                if (!targets.empty()) ctx->self->notifyTargets(targets);
-
-                std::vector<std::string> regpaths = Powershell::findRegistryPaths(text);
-                auto looksLikeRegistryIoc = [](const std::string& p)->bool {
-                    if (p.empty()) return false;
-                    static const std::vector<std::string> patterns = {
-                        "\\software\\microsoft\\windows\\currentversion\\run",
-                        "\\software\\microsoft\\windows\\currentversion\\runonce",
-                        "\\software\\microsoft\\windows\\currentversion\\policies\\system",
-                        "\\software\\microsoft\\windows nt\\currentversion\\winlogon",
-                        "\\software\\microsoft\\windows nt\\currentversion\\image file execution options",
-                        "\\software\\microsoft\\windows nt\\currentversion\\silentprocessexit",
-                        "\\microsoft\\windows\\currentversion\\startupapproved",
-                        "\\system\\currentcontrolset\\services",
-                        "\\system\\currentcontrolset\\control\\terminal server",
-                        "\\system\\currentcontrolset\\control\\lsa"
-                    };
-                    std::string lower;
-                    lower.reserve(p.size());
-                    for (char c : p) lower.push_back(static_cast<char>(std::tolower(static_cast<unsigned char>(c))));
-                    for (const auto& pat : patterns) {
-                        if (!pat.empty() && lower.find(pat) != std::string::npos) return true;
-                    }
-                    return false;
-                };
-
-                for (const auto& rp : regpaths) {
-                    if (!looksLikeRegistryIoc(rp)) continue;
-                    UTIL::logSuspicion(L"[PowerShell] registry path detected: " + UTIL::to_wstring_utf8(rp));
-                }
-
-                if (hasTargets || hasKeywords) {
-                    std::wstring msg = L"[PowerShell] suspicious content detected; logging only. ";
-                    if (hasTargets) {
-                        msg += L"Targets: ";
-                        for (size_t i = 0; i < targets.size(); ++i) {
-                            if (i) msg += L", ";
-                            msg += UTIL::to_wstring_utf8(targets[i]);
-                        }
-                        msg += L". ";
-                    }
-                    msg += L"Preview: " + UTIL::to_wstring_utf8(preview);
-                    UTIL::logSuspicion(msg);
-                } else {
-                    // Minimal breadcrumb to verify AMSI scanning without spamming.
-                    UTIL::logSuspicion(L"[PowerShell] AMSI scan observed (no IOC). Preview: " + UTIL::to_wstring_utf8(preview));
-                }
-            } catch (...) {
-            }
-            return 0;
-        }
-    }
-
     Powershell::Powershell() : threadHandle(nullptr), stopEvent(nullptr), running(false) {}
 
     Powershell::~Powershell() {
@@ -303,43 +231,22 @@ namespace ESC {
 
             DWORD len = 0;
             DWORD got = 0;
-            if (!ReadFile(pipe, &len, sizeof(len), &got, nullptr) || got != sizeof(len) || len == 0 || len > kMaxMsg) {
-                BYTE verdict = 'A';
-                DWORD written = 0;
-                WriteFile(pipe, &verdict, 1, &written, nullptr);
-                FlushFileBuffers(pipe);
-                DisconnectNamedPipe(pipe);
-                CloseHandle(pipe);
-                continue;
+            if (!ReadFile(pipe, &len, sizeof(len), &got, nullptr) || got != sizeof(len)) {
+                len = 0;
             }
 
-            std::vector<uint8_t> buffer;
-            buffer.resize(len);
-            DWORD total = 0;
-            while (total < len) {
-                DWORD chunk = 0;
-                if (!ReadFile(pipe, buffer.data() + total, len - total, &chunk, nullptr) || chunk == 0) {
-                    break;
-                }
-                total += chunk;
+            if (len) {
+                std::wstring note = L"[PowerShell] AMSI payload observed (len=" + std::to_wstring(len) + L")";
+                UTIL::logSuspicion(note);
             }
 
-            BYTE verdict = 'A'; // always allow to avoid PowerShell crashes; analysis/logging happens asynchronously below.
+            // Respond immediately to avoid blocking the caller. Payload analysis is skipped for stability.
+            BYTE verdict = 'A';
             DWORD written = 0;
             WriteFile(pipe, &verdict, 1, &written, nullptr);
             FlushFileBuffers(pipe);
             DisconnectNamedPipe(pipe);
             CloseHandle(pipe);
-
-            // Analyze and log in the background to keep AMSI fast and avoid hangs.
-            if (total == len) {
-                auto* ctx = new AnalysisCtx();
-                ctx->self = this;
-                ctx->data.swap(buffer);
-                HANDLE h = CreateThread(nullptr, 0, AnalyzePayloadAsync, ctx, 0, nullptr);
-                if (h) CloseHandle(h);
-                else delete ctx;
-            }
         }
 
         return 0;
