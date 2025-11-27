@@ -1,2 +1,1 @@
-windres menu/menu.rc -O coff -o menu/menu.res;
-g++ -std=c++17 -DUNICODE -D_UNICODE -mwindows -I. main.cpp menu/menu.cpp menu/menu.res escalate/defender.cpp escalate/firewall.cpp escalate/registry/registry.cpp escalate/powershell/powershell.cpp -lole32 -luuid -ladvapi32 -luser32 -lgdi32 -lshell32 -lwtsapi32 -lws2_32 -ltdh -lrpcrt4 -o greathelm.exe & pause
+windres menu/menu.rc -O coff -o menu/menu.res & g++ -std=c++17 -DUNICODE -D_UNICODE -mwindows -I. main.cpp menu/menu.cpp menu/menu.res escalate/defender.cpp escalate/firewall.cpp escalate/registry/registry.cpp escalate/powershell/powershell.cpp -lole32 -luuid -ladvapi32 -luser32 -lgdi32 -lshell32 -lwtsapi32 -lws2_32 -ltdh -lrpcrt4 -o greathelm.exe & pause

@@ -113,19 +113,31 @@ namespace ESC {
                     static const std::vector<std::wstring> keyPatterns = {
                         L"\\software\\microsoft\\windows\\currentversion\\run",
                         L"\\software\\microsoft\\windows\\currentversion\\runonce",
+                        L"\\software\\microsoft\\windows\\currentversion\\runservices",
+                        L"\\software\\microsoft\\windows\\currentversion\\runservicesonce",
                         L"\\software\\microsoft\\windows\\currentversion\\policies\\system",
+                        L"\\software\\microsoft\\windows\\currentversion\\policies\\explorer\\run",
                         L"\\software\\microsoft\\windows nt\\currentversion\\winlogon",
+                        L"\\software\\microsoft\\windows nt\\currentversion\\windows",
                         L"\\software\\microsoft\\windows nt\\currentversion\\image file execution options",
                         L"\\software\\microsoft\\windows nt\\currentversion\\silentprocessexit",
                         L"\\microsoft\\windows\\currentversion\\startupapproved",
+                        L"\\software\\wow6432node\\microsoft\\windows\\currentversion\\run",
+                        L"\\software\\wow6432node\\microsoft\\windows\\currentversion\\runonce",
+                        L"\\software\\wow6432node\\microsoft\\windows\\currentversion\\runservices",
+                        L"\\software\\wow6432node\\microsoft\\windows\\currentversion\\runservicesonce",
                         L"\\system\\currentcontrolset\\services",
+                        L"\\system\\currentcontrolset\\control\\session manager",
                         L"\\system\\currentcontrolset\\control\\terminal server",
-                        L"\\system\\currentcontrolset\\control\\lsa"
+                        L"\\system\\currentcontrolset\\control\\lsa",
+                        L"\\system\\currentcontrolset\\control\\securityproviders\\wdigest"
                     };
 
                     static const std::vector<std::wstring> valuePatterns = {
                         L"shell", L"userinit", L"load", L"run", L"runonce",
-                        L"debugger", L"command", L"autorun", L"start"
+                        L"debugger", L"command", L"autorun", L"start",
+                        L"appinit_dlls", L"loadappinit_dlls", L"bootexecute",
+                        L"authentication packages", L"notification packages", L"ginadll"
                     };
 
                     const std::wstring keyLow = toLower(keyPath);
