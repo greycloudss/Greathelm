@@ -6,7 +6,7 @@ It’s built entirely in C++ and designed for minimal dependencies, direct API u
 
 > Work in progress: APIs and internals are evolving. Expect breaking changes across minor versions until v1.0.  
 >Part of the **Armour series**  
-
+>**No Longer Developed**  
 ---
 
 ## Overview
